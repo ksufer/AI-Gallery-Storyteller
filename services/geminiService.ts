@@ -63,6 +63,14 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
     // 简化 promptText，因为主要指令已经在 SYSTEM_INSTRUCTION 中定义
     const promptText = `提示词: ${safePrompts.join(', ')}`;
     
+    // Debug Log: 打印实际发送的内容
+    console.log("=== Gemini Request Debug ===");
+    console.log("Safe Prompts:", safePrompts);
+    console.log("System Instruction Length:", SYSTEM_INSTRUCTION.length);
+    console.log("Has Image:", !!image);
+    console.log("Prompt Text:", promptText);
+    console.log("============================");
+
     let contents: any = promptText;
 
     if (image) {
