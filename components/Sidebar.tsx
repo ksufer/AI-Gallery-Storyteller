@@ -18,9 +18,9 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
       {/* Brand */}
       <div className="p-6">
         <h1 className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
-          AIGallery
+          AI 图库
         </h1>
-        <p className="text-xs text-gray-500 mt-1">Storyteller Edition</p>
+        <p className="text-xs text-gray-500 mt-1">故事版</p>
       </div>
 
       {/* Navigation */}
@@ -31,13 +31,13 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
           <NavItem 
             active={currentFilter.type === 'all'} 
             onClick={() => onFilterChange({ type: 'all' })}
-            label="All Images"
+            label="全部图片"
             count={images.length}
           />
           <NavItem 
             active={currentFilter.type === 'favorite'} 
             onClick={() => onFilterChange({ type: 'favorite' })}
-            label="Favorites"
+            label="收藏"
             icon={<HeartIcon className="w-4 h-4" />}
             count={images.filter(i => i.isFavorite).length}
           />
@@ -45,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
 
         {/* Checkpoints Section */}
         <div>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">Models</h3>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">模型</h3>
           <div className="space-y-1">
             {allCheckpoints.map(ckpt => (
               <NavItem 
@@ -56,13 +56,13 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
                 icon={<TagIcon className="w-3 h-3 text-cyan-500" />}
               />
             ))}
-            {allCheckpoints.length === 0 && <span className="text-xs text-gray-700 px-2">No models found</span>}
+            {allCheckpoints.length === 0 && <span className="text-xs text-gray-700 px-2">暂无模型</span>}
           </div>
         </div>
 
         {/* Loras Section */}
         <div>
-           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">LoRAs</h3>
+           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">LoRA</h3>
            <div className="space-y-1">
             {allLoras.map(lora => (
               <NavItem 
@@ -73,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
                 icon={<TagIcon className="w-3 h-3 text-purple-500" />}
               />
             ))}
-             {allLoras.length === 0 && <span className="text-xs text-gray-700 px-2">No LoRAs found</span>}
+             {allLoras.length === 0 && <span className="text-xs text-gray-700 px-2">暂无 LoRA</span>}
            </div>
         </div>
 
@@ -81,7 +81,7 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
 
       {/* Footer */}
       <div className="p-4 border-t border-white/5 text-[10px] text-gray-600">
-        Local Library v1.0.0
+        本地图库 v1.0.0
       </div>
     </div>
   );
