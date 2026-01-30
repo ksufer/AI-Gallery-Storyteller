@@ -127,7 +127,8 @@ app.get('/api/images', async (req, res) => {
 app.get('/api/tags', (req, res) => {
     try {
         const search = req.query.q as string;
-        const tags = getTagsWithCount(search);
+        const source = req.query.source as 'auto' | 'user' | undefined;
+        const tags = getTagsWithCount(search, source);
         res.json(tags);
     } catch (error) {
          console.error("API Error:", error);

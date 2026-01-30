@@ -10,13 +10,27 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange }) => {
   const [tagSearch, setTagSearch] = useState('');
+  const [userTagSearch, setUserTagSearch] = useState('');
   const [folders, setFolders] = useState<string[]>([]);
   const [folderCounts, setFolderCounts] = useState<{ [key: string]: number }>({});
+  const [autoTags, setAutoTags] = useState<Array<{ name: string, count: number }>>([]);
+  const [userTags, setUserTags] = useState<Array<{ name: string, count: number }>>([]);
 
-  // Fetch folders on mount
+  // Fetch folders and tags on mount
   useEffect(() => {
     fetchFolders();
+    fetchAutoTags();
+    fetchUserTags();
   }, []);
+
+  // Refetch tags when search changes
+  useEffect(() => {
+    fetchAutoTags();
+  }, [tagSearch]);
+
+  useEffect(() => {
+    fetchUserTags();
+  }, [userTagSearch]);
 
   const fetchFolders = async () => {
     try {
@@ -32,36 +46,34 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
     }
   };
 
-  // Extract Tags from Prompts
-  const allTags = useMemo(() => {
-      const tagCounts: Record<string, number> = {};
+  const fetchAutoTags = async () => {
+    try {
+      const params = new URLSearchParams({ source: 'auto' });
+      if (tagSearch) params.set('q', tagSearch);
       
-      images.forEach(img => {
-          img.metadata.prompts.forEach(prompt => {
-              const parts = prompt.split(',');
-              parts.forEach(part => {
-                  const tag = part.trim();
-                  if (tag.length > 0 && tag.length < 50) {
-                      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-                  }
-              });
-          });
-      });
+      const response = await fetch(`/api/tags?${params}`);
+      const tags = await response.json();
+      
+      // Limit to top 100
+      setAutoTags((tags || []).slice(0, 100));
+    } catch (error) {
+      console.error('Failed to fetch auto tags:', error);
+    }
+  };
 
-      let tags = Object.entries(tagCounts)
-          .sort(([, a], [, b]) => b - a)
-          .map(([tag]) => tag);
+  const fetchUserTags = async () => {
+    try {
+      const params = new URLSearchParams({ source: 'user' });
+      if (userTagSearch) params.set('q', userTagSearch);
       
-      if (tagSearch) {
-          const lowerSearch = tagSearch.toLowerCase();
-          tags = tags.filter(t => t.toLowerCase().includes(lowerSearch));
-      } else {
-          // Limit to top 100 if no search
-          tags = tags.slice(0, 100);
-      }
+      const response = await fetch(`/api/tags?${params}`);
+      const tags = await response.json();
       
-      return tags;
-  }, [images, tagSearch]);
+      setUserTags(tags || []);
+    } catch (error) {
+      console.error('Failed to fetch user tags:', error);
+    }
+  };
 
   return (
     <div className="w-64 h-screen fixed left-0 top-0 bg-[#121212] border-r border-white/5 flex flex-col z-40 hidden md:flex">
@@ -93,11 +105,55 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
           />
         </div>
 
-        {/* Tags Section */}
+        {/* User Tags Section */}
+        <div>
+           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 flex justify-between items-center">
+             用户标签
+             <span className="text-[10px] text-gray-600">{userTags.length}</span>
+           </h3>
+           
+           {/* Search Box */}
+           <div className="px-2 mb-3">
+             <div className="relative group">
+                <MagnifyingGlassIcon className="w-3 h-3 text-gray-500 absolute left-2 top-2" />
+                <input 
+                  type="text" 
+                  value={userTagSearch}
+                  onChange={(e) => setUserTagSearch(e.target.value)}
+                  placeholder="搜索用户标签..." 
+                  className="w-full bg-[#18181b] border border-white/5 rounded-md py-1.5 pl-7 pr-2 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+                />
+             </div>
+           </div>
+
+           {/* Tags Cloud / List */}
+           <div className="flex flex-wrap gap-1.5 px-2 max-h-40 overflow-y-auto custom-scrollbar">
+            {userTags.map(tag => {
+              const isActive = currentFilter.type === 'tag' && currentFilter.value === tag.name;
+              return (
+                <button
+                  key={tag.name}
+                  onClick={() => onFilterChange({ type: 'tag', value: tag.name })}
+                  className={`text-[10px] px-2 py-1 rounded border transition-all truncate max-w-full ${
+                    isActive 
+                      ? 'bg-purple-500/20 border-purple-500/50 text-purple-400' 
+                      : 'bg-white/5 border-transparent text-gray-400 hover:border-white/10 hover:text-gray-200'
+                  }`}
+                  title={`${tag.name} (${tag.count})`}
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+             {userTags.length === 0 && <span className="text-xs text-gray-700 px-2 w-full text-center py-2">暂无用户标签</span>}
+           </div>
+        </div>
+
+        {/* Auto Tags Section */}
         <div>
            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 flex justify-between items-center">
              常用标签
-             <span className="text-[10px] text-gray-600">{allTags.length}</span>
+             <span className="text-[10px] text-gray-600">{autoTags.length}</span>
            </h3>
            
            {/* Search Box */}
@@ -116,24 +172,24 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
 
            {/* Tags Cloud / List */}
            <div className="flex flex-wrap gap-1.5 px-2 max-h-60 overflow-y-auto custom-scrollbar">
-            {allTags.map(tag => {
-              const isActive = currentFilter.type === 'tag' && currentFilter.value === tag;
+            {autoTags.map(tag => {
+              const isActive = currentFilter.type === 'tag' && currentFilter.value === tag.name;
               return (
                 <button
-                  key={tag}
-                  onClick={() => onFilterChange({ type: 'tag', value: tag })}
+                  key={tag.name}
+                  onClick={() => onFilterChange({ type: 'tag', value: tag.name })}
                   className={`text-[10px] px-2 py-1 rounded border transition-all truncate max-w-full ${
                     isActive 
                       ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' 
                       : 'bg-white/5 border-transparent text-gray-400 hover:border-white/10 hover:text-gray-200'
                   }`}
-                  title={tag}
+                  title={`${tag.name} (${tag.count})`}
                 >
-                  {tag}
+                  {tag.name}
                 </button>
               );
             })}
-             {allTags.length === 0 && <span className="text-xs text-gray-700 px-2 w-full text-center py-2">无结果</span>}
+             {autoTags.length === 0 && <span className="text-xs text-gray-700 px-2 w-full text-center py-2">无结果</span>}
            </div>
         </div>
 

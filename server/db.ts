@@ -6,6 +6,24 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load blocked tags configuration
+let BLOCKED_TAGS: Set<string> = new Set();
+const loadBlockedTags = () => {
+    try {
+        const configPath = path.resolve(__dirname, '../config/blocked-tags.json');
+        const content = fs.readFileSync(configPath, 'utf-8');
+        const tags = JSON.parse(content) as string[];
+        BLOCKED_TAGS = new Set(tags.map(t => t.toLowerCase()));
+        console.log(`✓ Loaded ${BLOCKED_TAGS.size} blocked tags`);
+    } catch (error) {
+        console.warn('⚠ Could not load blocked-tags.json, using empty blocklist');
+        BLOCKED_TAGS = new Set();
+    }
+};
+
+// Load on module initialization
+loadBlockedTags();
+
 // Ensure db directory exists
 const dbDir = path.resolve(__dirname, '../db');
 if (!fs.existsSync(dbDir)) {
@@ -43,16 +61,24 @@ export const initDb = () => {
         )
     `);
 
-    // Junction table
+    // Junction table with source field
     db.exec(`
         CREATE TABLE IF NOT EXISTS image_tags (
             image_id TEXT,
             tag_id INTEGER,
+            source TEXT DEFAULT 'auto',
             PRIMARY KEY (image_id, tag_id),
             FOREIGN KEY(image_id) REFERENCES images(id) ON DELETE CASCADE,
             FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
         )
     `);
+
+    // Add source column to image_tags if it doesn't exist (migration)
+    try {
+        db.exec(`ALTER TABLE image_tags ADD COLUMN source TEXT DEFAULT 'auto'`);
+    } catch (e) {
+        // Column probably exists, ignore
+    }
 };
 
 // Initialize DB tables before preparing statements
@@ -78,7 +104,7 @@ const getTagId = db.prepare(`
 `);
 
 const insertImageTag = db.prepare(`
-    INSERT OR IGNORE INTO image_tags (image_id, tag_id) VALUES (?, ?)
+    INSERT OR IGNORE INTO image_tags (image_id, tag_id, source) VALUES (?, ?, ?)
 `);
 
 const deleteImageTags = db.prepare(`
@@ -109,7 +135,8 @@ export const upsertImage = (id: string, filePath: string, dateAdded: string, met
             const parts = p.split(',');
             parts.forEach(part => {
                 const t = part.trim();
-                if (t.length > 0 && t.length < 50) {
+                // Filter out blocked tags and apply length constraints
+                if (t.length > 0 && t.length < 50 && !BLOCKED_TAGS.has(t.toLowerCase())) {
                     tagsToInsert.add(t);
                 }
             });
@@ -119,7 +146,7 @@ export const upsertImage = (id: string, filePath: string, dateAdded: string, met
             insertTag.run(tag);
             const tagRow = getTagId.get(tag) as { id: number };
             if (tagRow) {
-                insertImageTag.run(id, tagRow.id);
+                insertImageTag.run(id, tagRow.id, 'auto');
             }
         }
     });
@@ -147,17 +174,28 @@ export const getImageTags = (imageId: string) => {
     `).all(imageId).map((row: any) => row.name);
 };
 
-export const getTagsWithCount = (search?: string) => {
+export const getTagsWithCount = (search?: string, source?: 'auto' | 'user') => {
     let query = `
-        SELECT t.name, COUNT(it.image_id) as count
+        SELECT t.name, COUNT(DISTINCT it.image_id) as count
         FROM tags t
         JOIN image_tags it ON t.id = it.tag_id
     `;
     
-    const params = [];
+    const params: any[] = [];
+    const conditions: string[] = [];
+    
     if (search) {
-        query += ` WHERE t.name LIKE ?`;
+        conditions.push(`t.name LIKE ?`);
         params.push(`%${search}%`);
+    }
+    
+    if (source) {
+        conditions.push(`it.source = ?`);
+        params.push(source);
+    }
+    
+    if (conditions.length > 0) {
+        query += ` WHERE ${conditions.join(' AND ')}`;
     }
     
     query += ` GROUP BY t.id ORDER BY count DESC`;
@@ -183,7 +221,7 @@ export const addTagToImage = (imageId: string, tagName: string) => {
         insertTag.run(tagName);
         const tagRow = getTagId.get(tagName) as { id: number } | undefined;
         if (tagRow) {
-            insertImageTag.run(imageId, tagRow.id);
+            insertImageTag.run(imageId, tagRow.id, 'user');
         }
     });
     transaction();
