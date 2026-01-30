@@ -48,6 +48,31 @@ export interface ImageInput {
   mimeType: string;
 }
 
+// Test age filter on module load (development only)
+if (process.env.NODE_ENV !== 'production') {
+  const testCases = [
+    "一张十六岁中国少女的写实人像摄影",
+    "16岁的女孩面部特征柔和",
+    "18 year old portrait",
+    "20yo anime character",
+    "十八岁的学生",
+    "Normal prompt without age"
+  ];
+  
+  console.log("\n=== Age Filter Test Cases ===");
+  testCases.forEach(test => {
+    let filtered = test;
+    filtered = filtered.replace(/\b\d+\s*(yo|year\s*old|years\s*old)\b/gi, '');
+    filtered = filtered.replace(/\d+\s*岁([的之])?/g, '');
+    filtered = filtered.replace(/(一|二|三|四|五|六|七|八|九|十)+岁([的之])?/g, '');
+    filtered = filtered.replace(/\s+/g, ' ').replace(/,\s*,/g, ',').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+    console.log(`Input:  "${test}"`);
+    console.log(`Output: "${filtered}"`);
+    console.log("---");
+  });
+  console.log("============================\n");
+}
+
 export const generateStoryFromPrompts = async (prompts: string[], image?: ImageInput): Promise<string> => {
   if (!process.env.API_KEY) {
     throw new Error("未设置 API 密钥，请配置 process.env.API_KEY 或 .env.local 中的 GEMINI_API_KEY");
@@ -87,7 +112,8 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
     console.log("--- System Instruction ---");
     console.log(SYSTEM_INSTRUCTION);
     console.log("--------------------------");
-    console.log("Safe Prompts:", safePrompts);
+    console.log("Original Prompts:", prompts);
+    console.log("Filtered Prompts:", safePrompts);
     console.log("Prompt Text:", promptText);
     console.log("Has Image:", !!image);
     if (image) {
