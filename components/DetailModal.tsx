@@ -79,14 +79,6 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
       {/* Modal Content */}
       <div className="relative flex flex-col lg:flex-row w-full max-w-7xl h-full max-h-[90vh] glass-panel rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
         
-        {/* Close Button */}
-        <button 
-          onClick={onClose} 
-          className="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/50 hover:bg-white/20 text-white transition-colors"
-        >
-          <XMarkIcon className="w-6 h-6" />
-        </button>
-
         {/* Left Side: Image */}
         <div className="lg:w-3/5 bg-[#000] flex items-center justify-center relative overflow-hidden group">
            {/* Background Blur Effect */}
@@ -116,14 +108,22 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
         <div className="lg:w-2/5 flex flex-col bg-[#18181b] border-l border-white/5 overflow-y-auto custom-scrollbar">
           
           {/* Action Bar */}
-          <div className="p-6 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#18181b]/95 backdrop-blur z-10">
+          <div className="p-6 pr-14 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#18181b]/95 backdrop-blur z-10">
             <h3 className="text-lg font-semibold text-white">详情</h3>
-            <button 
-              onClick={() => onToggleFavorite(image.id)}
-              className={`p-2 rounded-full border transition-all ${image.isFavorite ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'border-white/10 text-gray-400 hover:text-white'}`}
-            >
-              <HeartIcon className="w-5 h-5" solid={image.isFavorite} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => onToggleFavorite(image.id)}
+                className={`p-2 rounded-full border transition-all ${image.isFavorite ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'border-white/10 text-gray-400 hover:text-white'}`}
+              >
+                <HeartIcon className="w-5 h-5" solid={image.isFavorite} />
+              </button>
+              <button 
+                onClick={onClose} 
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <div className="p-6 space-y-8">
@@ -157,7 +157,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
             <div className="space-y-2">
                 <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wider">正向提示词</h4>
                 <div className="p-3 bg-black/30 rounded-lg border border-white/5">
-                    <p className="text-sm text-gray-300 leading-relaxed font-mono text-xs opacity-90">
+                    <p className="text-sm text-gray-300 leading-relaxed font-mono text-xs opacity-90 break-words">
                         {image.metadata.prompts.join(', ')}
                     </p>
                 </div>
@@ -168,7 +168,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                 <div className="space-y-2">
                     <h4 className="text-sm font-medium text-red-400/70 uppercase tracking-wider">反向提示词</h4>
                     <div className="p-3 bg-red-900/5 rounded-lg border border-red-500/10">
-                        <p className="text-sm text-gray-400 leading-relaxed font-mono text-xs opacity-80">
+                        <p className="text-sm text-gray-400 leading-relaxed font-mono text-xs opacity-80 break-words">
                             {image.metadata.negative_prompts.join(', ')}
                         </p>
                     </div>
@@ -202,7 +202,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
 const MetaItem = ({ label, value }: { label: string, value: string | number | undefined }) => (
     <div className="flex flex-col p-2 bg-white/5 rounded border border-white/5">
         <span className="text-[10px] uppercase text-gray-500 font-semibold">{label}</span>
-        <span className="text-xs text-gray-200 truncate font-mono mt-1" title={String(value)}>{value || '-'}</span>
+        <span className="text-xs text-gray-200 font-mono mt-1 break-words" title={String(value)}>{value || '-'}</span>
     </div>
 );
 

@@ -10,7 +10,7 @@ import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
 import { getImages, getTagsWithCount, upsertImage, updateImageStory } from './db.ts';
 import { parseImageFile } from './metadata.ts';
-import type { GalleryImage } from '../types.ts';
+import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,9 +56,30 @@ const upload = multer({
 // API Routes
 app.get('/api/images', async (req, res) => {
     try {
-        const rows = getImages() as any[];
+        // Parse pagination parameters
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const offset = (page - 1) * limit;
         
-        const galleryImages: GalleryImage[] = rows.map(row => {
+        // Get all rows first (we'll implement DB-level pagination later if needed)
+        const allRows = getImages() as any[];
+        
+        // Apply filtering
+        let filteredRows = allRows;
+        
+        // Filter by favorite
+        if (req.query.favorite === 'true') {
+            // Note: isFavorite is not in DB yet, so this won't filter anything currently
+            // This is a placeholder for future implementation
+        }
+        
+        // Get total count
+        const total = filteredRows.length;
+        
+        // Apply pagination
+        const paginatedRows = filteredRows.slice(offset, offset + limit);
+        
+        const galleryImages: GalleryImage[] = paginatedRows.map(row => {
             const relativePath = path.relative(UPLOADS_DIR, row.file_path);
             const urlPath = relativePath.split(path.sep).join('/');
             
@@ -73,7 +94,21 @@ app.get('/api/images', async (req, res) => {
             };
         });
         
-        res.json(galleryImages);
+        // Check if legacy mode (no pagination params)
+        if (!req.query.page && !req.query.limit) {
+            // Return legacy format for backward compatibility
+            res.json(galleryImages);
+        } else {
+            // Return paginated response
+            const response: PaginatedResponse<GalleryImage> = {
+                data: galleryImages,
+                total,
+                page,
+                limit,
+                hasMore: offset + limit < total
+            };
+            res.json(response);
+        }
     } catch (error) {
         console.error("API Error:", error);
         res.status(500).json({ error: "Failed to fetch images" });

@@ -32,3 +32,22 @@ export interface FilterState {
   type: FilterType;
   value?: string;
 }
+
+// Pagination types
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface ImageQueryParams {
+  page?: number;
+  limit?: number;
+  type?: FilterType;
+  favorite?: boolean;
+  checkpoint?: string;
+  lora?: string;
+  tag?: string;
+}

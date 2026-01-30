@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DetailModal from './components/DetailModal';
-import { GalleryImage, FilterState } from './types';
+import VirtualMasonryGallery from './components/VirtualMasonryGallery';
+import { GalleryImage, FilterState, PaginatedResponse } from './types';
 import { MOCK_IMAGES } from './constants';
-import { SparklesIcon, DocumentTextIcon, HeartIcon } from './components/Icons';
+import { SparklesIcon } from './components/Icons';
 
 function App() {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -14,28 +15,79 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalImages, setTotalImages] = useState(0);
+  
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Fetch images from backend
-  const fetchImages = () => {
-    fetch('/api/images')
-      .then(res => res.json())
-      .then(data => {
-        if (data.length === 0) {
-           setImages(MOCK_IMAGES);
+  // Fetch images from backend with pagination
+  const fetchImages = async (pageNum: number = 1, append: boolean = false) => {
+    try {
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      const response = await fetch(`/api/images?page=${pageNum}&limit=20`);
+      const data = await response.json();
+      
+      // Check if response is paginated
+      const isPaginated = 'data' in data && 'total' in data;
+      
+      if (isPaginated) {
+        const paginatedData = data as PaginatedResponse<GalleryImage>;
+        
+        if (append) {
+          setImages(prev => [...prev, ...paginatedData.data]);
         } else {
-           setImages(data);
+          setImages(paginatedData.data);
         }
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to load images:", err);
-        setIsLoading(false);
-      });
+        
+        setHasMore(paginatedData.hasMore);
+        setPage(paginatedData.page);
+        setTotalImages(paginatedData.total);
+      } else {
+        // Legacy response (array of images)
+        const legacyData = data as GalleryImage[];
+        if (legacyData.length === 0) {
+          setImages(MOCK_IMAGES);
+          setTotalImages(MOCK_IMAGES.length);
+        } else {
+          setImages(legacyData);
+          setTotalImages(legacyData.length);
+        }
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Failed to load images:", err);
+      setImages(MOCK_IMAGES);
+      setTotalImages(MOCK_IMAGES.length);
+      setHasMore(false);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
   };
 
+  // Load more images
+  const loadMore = () => {
+    if (hasMore && !isLoadingMore) {
+      fetchImages(page + 1, true);
+    }
+  };
+
+  // Reset and fetch from beginning when filter changes
   useEffect(() => {
-    fetchImages();
-  }, []);
+    setPage(1);
+    setImages([]);
+    fetchImages(1, false);
+  }, [filter]);
 
   // Filter Logic
   const filteredImages = useMemo(() => {
@@ -69,9 +121,9 @@ function App() {
     setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !img.isFavorite } : img));
   };
 
-  const handleBatchUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
+  // Upload files (extracted logic for reuse)
+  const uploadFiles = React.useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setUploadStatus(null);
@@ -102,7 +154,7 @@ function App() {
           type: 'success' 
         });
         // Refresh images list
-        fetchImages();
+        fetchImages(1, false);
         // Clear file input
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -124,6 +176,12 @@ function App() {
       // Clear status message after 3 seconds
       setTimeout(() => setUploadStatus(null), 3000);
     }
+  }, []);
+
+  const handleBatchUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(Array.from(files));
   };
 
   const handleUploadClick = () => {
@@ -133,6 +191,67 @@ function App() {
   const handleFolderUploadClick = () => {
     folderInputRef.current?.click();
   };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the main container
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files).filter((file: File) => 
+      file.type.startsWith('image/')
+    );
+
+    if (files.length > 0) {
+      await uploadFiles(files);
+    }
+  };
+
+  // Paste handler
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            imageFiles.push(file);
+          }
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        await uploadFiles(imageFiles);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [uploadFiles]);
 
   const selectedImage = images.find(img => img.id === selectedImageId);
 
@@ -147,7 +266,30 @@ function App() {
       />
 
       {/* Main Content */}
-      <main className="md:pl-64 min-h-screen transition-all duration-300">
+      <main 
+        className="md:pl-64 min-h-screen transition-all duration-300 relative"
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drag and Drop Overlay */}
+        {isDragging && (
+          <div className="fixed inset-0 md:left-64 z-50 bg-cyan-500/20 backdrop-blur-sm border-4 border-dashed border-cyan-500 flex items-center justify-center pointer-events-none">
+            <div className="bg-[#121212]/90 p-8 rounded-2xl border border-cyan-500/50 shadow-2xl">
+              <div className="flex flex-col items-center gap-4">
+                <svg className="w-16 h-16 text-cyan-500 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-white mb-2">拖放图片到这里</p>
+                  <p className="text-sm text-gray-400">支持 PNG, JPG, WEBP 格式</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <header className="sticky top-0 z-30 bg-[#121212]/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-medium text-white capitalize">
@@ -212,59 +354,19 @@ function App() {
           </div>
         </header>
 
-        <div className="p-6">
-          {isLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <SparklesIcon className="w-8 h-8 animate-spin text-cyan-500" />
-            </div>
-          ) : (
-            /* Masonry-style Grid using Tailwind Columns */
-            <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
-              {filteredImages.map(image => (
-                <div 
-                  key={image.id} 
-                  onClick={() => setSelectedImageId(image.id)}
-                  className="break-inside-avoid relative group cursor-pointer rounded-xl overflow-hidden bg-[#18181b] border border-white/5 hover:border-white/20 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-900/10"
-                >
-                  {/* Image */}
-                  <img 
-                    src={image.url} 
-                    alt={image.fileName} 
-                    className="w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity"
-                    loading="lazy"
-                  />
-                  
-                  {/* Overlay Gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
-                    <div className="flex items-center justify-between">
-                       <div>
-                          <p className="text-sm font-medium text-white truncate w-40">{image.fileName}</p>
-                          <p className="text-[10px] text-gray-400">{image.metadata.type}</p>
-                       </div>
-                       {image.story && <DocumentTextIcon className="w-4 h-4 text-purple-400" />}
-                    </div>
-                  </div>
-
-                  {/* Status Indicators (Always Visible or on Hover) */}
-                  <div className="absolute top-3 right-3 flex gap-2">
-                      {image.isFavorite && (
-                          <div className="bg-black/50 backdrop-blur rounded-full p-1.5">
-                              <HeartIcon className="w-3 h-3 text-red-500" solid />
-                          </div>
-                      )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!isLoading && filteredImages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-gray-600">
-              <SparklesIcon className="w-12 h-12 mb-4 opacity-20" />
-              <p>当前筛选下没有图片。</p>
-            </div>
-          )}
-        </div>
+        {isLoading ? (
+          <div className="flex justify-center items-center h-[calc(100vh-180px)]">
+            <SparklesIcon className="w-8 h-8 animate-spin text-cyan-500" />
+          </div>
+        ) : (
+          <VirtualMasonryGallery
+            images={filteredImages}
+            onImageClick={setSelectedImageId}
+            onLoadMore={loadMore}
+            hasMore={hasMore}
+            isLoading={isLoadingMore}
+          />
+        )}
       </main>
 
       {/* Detail Modal */}
