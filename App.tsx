@@ -13,6 +13,7 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const folderInputRef = React.useRef<HTMLInputElement>(null);
 
   // Fetch images from backend
   const fetchImages = () => {
@@ -124,6 +125,10 @@ function App() {
     fileInputRef.current?.click();
   };
 
+  const handleFolderUploadClick = () => {
+    folderInputRef.current?.click();
+  };
+
   const selectedImage = images.find(img => img.id === selectedImageId);
 
   return (
@@ -156,6 +161,17 @@ function App() {
               </div>
             )}
             <button
+              onClick={handleFolderUploadClick}
+              disabled={isUploading}
+              className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isUploading ? (
+                <SparklesIcon className="w-4 h-4 animate-spin" />
+              ) : (
+                <span>上传文件夹</span>
+              )}
+            </button>
+            <button
               onClick={handleUploadClick}
               disabled={isUploading}
               className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -174,6 +190,17 @@ function App() {
               type="file"
               multiple
               accept="image/png,image/jpeg,image/jpg,image/webp"
+              onChange={handleBatchUpload}
+              className="hidden"
+            />
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              // @ts-ignore
+              webkitdirectory=""
+              // @ts-ignore
+              directory=""
               onChange={handleBatchUpload}
               className="hidden"
             />

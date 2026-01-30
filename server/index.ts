@@ -37,7 +37,7 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB limit
+        fileSize: 500 * 1024 * 1024, // 500MB limit
     },
     fileFilter: (req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
@@ -107,7 +107,7 @@ app.patch('/api/images/:id/story', async (req, res) => {
 });
 
 // File upload endpoint
-app.post('/api/upload', upload.array('files', 50), async (req, res) => {
+app.post('/api/upload', upload.array('files', 1000), async (req, res) => {
     try {
         if (!req.files || (Array.isArray(req.files) && req.files.length === 0)) {
             return res.status(400).json({ error: 'No files uploaded' });
@@ -221,6 +221,17 @@ const init = async () => {
     await organizeUploads(UPLOADS_DIR);
     await syncImagesWithDb(UPLOADS_DIR);
     console.log("Initialization complete.");
+
+    // Periodic scan every 60 seconds
+    setInterval(async () => {
+        try {
+            // console.log("Running periodic scan...");
+            await organizeUploads(UPLOADS_DIR);
+            await syncImagesWithDb(UPLOADS_DIR);
+        } catch (e) {
+            console.error("Periodic scan error:", e);
+        }
+    }, 60 * 1000);
 };
 
 // Setup Vite or static file serving

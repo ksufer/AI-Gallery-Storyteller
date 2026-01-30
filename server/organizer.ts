@@ -3,43 +3,87 @@ import path from 'path';
 import { getImages, upsertImage, deleteImage, getImageByPath } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 
+// Helper to check if directory is a date folder (YYYY-MM-DD)
+const isDateFolder = (name: string) => /^\d{4}-\d{2}-\d{2}$/.test(name);
+
 export const organizeUploads = async (uploadsDir: string) => {
     try {
-        const files = await fs.readdir(uploadsDir, { withFileTypes: true });
-        
+        await processDirectory(uploadsDir, uploadsDir);
+    } catch (error) {
+        console.error("Error organizing uploads:", error);
+    }
+};
+
+const processDirectory = async (currentDir: string, rootUploadsDir: string) => {
+    try {
+        const files = await fs.readdir(currentDir, { withFileTypes: true });
+
         for (const file of files) {
-            // Only organize files, skip directories (which are likely already date folders)
-            if (file.isFile() && isImageFile(file.name)) {
-                const filePath = path.join(uploadsDir, file.name);
-                const stats = await fs.stat(filePath);
-                
-                const date = new Date(stats.mtime);
-                const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
-                
-                const targetDir = path.join(uploadsDir, dateStr);
-                
-                // Create directory if not exists
-                try {
-                    await fs.access(targetDir);
-                } catch {
-                    await fs.mkdir(targetDir, { recursive: true });
+            const fullPath = path.join(currentDir, file.name);
+
+            if (file.isDirectory()) {
+                // Check if it is a date folder in the root directory
+                // We want to skip processing inside the destination folders to avoid loops or redundant work
+                if (currentDir === rootUploadsDir && isDateFolder(file.name)) {
+                    continue;
                 }
-                
-                const targetPath = path.join(targetDir, file.name);
-                
-                // Move file
-                // If target exists, skip or overwrite?
+
+                // Recurse into subdirectories
+                await processDirectory(fullPath, rootUploadsDir);
+
+                // Attempt to remove empty directory (cleanup) after processing
                 try {
-                    await fs.access(targetPath);
-                    console.log(`File ${file.name} already exists in ${dateStr}, skipping.`);
-                } catch {
-                    await fs.rename(filePath, targetPath);
-                    console.log(`Moved ${file.name} to ${dateStr}/`);
+                    const remaining = await fs.readdir(fullPath);
+                    if (remaining.length === 0) {
+                        await fs.rmdir(fullPath);
+                        console.log(`Removed empty directory: ${fullPath}`);
+                    }
+                } catch (e) {
+                    // Ignore if not empty or other error
                 }
+
+            } else if (file.isFile() && isImageFile(file.name)) {
+                // Process Image
+                await moveImage(fullPath, rootUploadsDir, file.name);
             }
         }
     } catch (error) {
-        console.error("Error organizing uploads:", error);
+        console.error(`Error processing directory ${currentDir}:`, error);
+    }
+};
+
+const moveImage = async (filePath: string, uploadsDir: string, fileName: string) => {
+    try {
+        const stats = await fs.stat(filePath);
+        const date = new Date(stats.mtime);
+        const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+        const targetDir = path.join(uploadsDir, dateStr);
+
+        // Ensure target dir exists
+        try {
+            await fs.access(targetDir);
+        } catch {
+            await fs.mkdir(targetDir, { recursive: true });
+        }
+
+        // Check if file is already in the correct directory
+        // normalize paths to be safe
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedTargetDir = path.normalize(targetDir);
+        
+        if (path.dirname(normalizedFilePath) === normalizedTargetDir) {
+            return; 
+        }
+
+        // Get safe filename
+        const safeName = await getSafeFileName(targetDir, fileName);
+        const targetPath = path.join(targetDir, safeName);
+
+        // Move
+        await fs.rename(filePath, targetPath);
+        console.log(`Moved ${fileName} to ${dateStr}/${safeName}`);
+    } catch (error) {
+        console.error(`Error moving file ${filePath}:`, error);
     }
 };
 
@@ -118,12 +162,9 @@ export const syncImagesWithDb = async (uploadsDir: string) => {
             try {
                 const stats = await fs.stat(fsPath);
                 const metadata = await parseImageFile(fsPath);
-                const id = path.basename(fsPath); // Using filename as ID for simplicity, or uuid
                 // Note: ID collision possible if same filename in different folders?
-                // Plan said "id, path, date, meta_json".
-                // Ideally use content hash or uuid.
-                // But for now, let's use relative path or random UUID?
                 // Let's use crypto.randomUUID if available or just timestamp + random
+                // Using basename + timestamp as uniqueId
                 const uniqueId =  path.basename(fsPath) + '_' + stats.mtime.getTime(); 
                 
                 upsertImage(uniqueId, fsPath, stats.mtime.toISOString(), metadata);
