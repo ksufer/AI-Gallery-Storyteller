@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const UPLOADS_DIR = path.resolve(__dirname, '../uploads');
+const CONFIG_DIR = path.resolve(__dirname, '../config');
 
 // Default to development if NODE_ENV is not set
 if (!process.env.NODE_ENV) {
@@ -32,6 +33,7 @@ app.use(express.json());
 
 // Static files
 app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/config', express.static(CONFIG_DIR));
 
 // Configure multer
 const upload = multer({

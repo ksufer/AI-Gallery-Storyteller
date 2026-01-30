@@ -56,7 +56,14 @@
     # PORT=3000
     ```
 
-4.  **启动开发服务器**
+4.  **配置禁词表（可选）**
+    复制并编辑禁词替换表配置：
+    ```bash
+    cp config/forbidden-words.example.json config/forbidden-words.json
+    ```
+    编辑 `config/forbidden-words.json` 添加需要替换的敏感词。
+
+5.  **启动开发服务器**
     这将同时启动 Express 后端和 Vite 前端（以中间件模式运行）：
     ```bash
     npm run dev

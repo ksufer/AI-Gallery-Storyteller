@@ -50,24 +50,36 @@ cleaned = cleaned.replace(/(一|二|三|四|五|六|七|八|九|十)+岁([的之
 
 ## 2. 禁词替换表
 
-通过配置禁词表，自动将敏感词汇替换为更委婉的表达。
+通过外部配置文件管理禁词表，无需修改代码即可更新敏感词替换规则。
 
-### 配置文件
+### 配置文件位置
 
-在 `services/geminiService.ts` 中修改 `FORBIDDEN_WORDS_MAP`：
+`config/forbidden-words.json`
 
-```typescript
-const FORBIDDEN_WORDS_MAP: Record<string, string> = {
-  '裸露': '展现',
-  '露出': '呈现',
-  '乳沟': '轮廓',
-  '侧乳': '侧影',
-  '丁字裤': '内衣',
-  '蕾丝': '精致',
-  '掀起裙边': '裙摆飘动',
-  // 可以继续添加更多需要替换的词汇...
-};
+### 文件格式
+
+```json
+{
+  "裸露": "展现",
+  "露出": "呈现",
+  "乳沟": "轮廓",
+  "侧乳": "侧影",
+  "丁字裤": "内衣",
+  "蕾丝": "精致",
+  "掀起裙边": "裙摆飘动"
+}
 ```
+
+### 首次使用
+
+1. 复制示例文件：
+   ```bash
+   cp config/forbidden-words.example.json config/forbidden-words.json
+   ```
+
+2. 编辑 `config/forbidden-words.json`，添加您需要的词汇映射
+
+3. 重启服务器（或刷新页面）
 
 ### 工作原理
 
@@ -181,15 +193,18 @@ Output: "一张中国少女的写实人像摄影"
 
 ### 添加新的禁词
 
-编辑 `services/geminiService.ts`，在 `FORBIDDEN_WORDS_MAP` 中添加新的映射：
+编辑 `config/forbidden-words.json` 文件：
 
-```typescript
-const FORBIDDEN_WORDS_MAP: Record<string, string> = {
-  // 现有词汇...
-  '你的新词': '替换为',
-  '另一个词': '另一个替换',
-};
+```json
+{
+  "现有词1": "替换1",
+  "现有词2": "替换2",
+  "你的新词": "替换为",
+  "另一个词": "另一个替换"
+}
 ```
+
+保存后重启服务器或刷新页面即可生效
 
 ### 调整过滤强度
 
