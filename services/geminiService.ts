@@ -1,8 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Initialize Gemini Client
-// In a real scenario, this key should be proxied through a backend to keep it secure.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// We use lazy initialization to allow the server to start even if API_KEY is missing.
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = () => {
+  if (!ai) {
+    if (!process.env.API_KEY) {
+      // Should acturally be handled by the caller, but just in case
+      throw new Error("未设置 API 密钥");
+    }
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return ai;
+};
 
 // 禁词表 - 从外部配置文件加载
 let FORBIDDEN_WORDS_MAP: Record<string, string> = {};
@@ -173,7 +184,8 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
       ];
     }
 
-    const response = await ai.models.generateContent({
+    const aiClient = getAiClient();
+    const response = await aiClient.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: contents,
       config: {
@@ -228,7 +240,7 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
             }
           ];
           
-          const fallbackResponse = await ai.models.generateContent({
+          const fallbackResponse = await aiClient.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: fallbackContents,
             config: {
