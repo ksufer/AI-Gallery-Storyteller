@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DetailModal from './components/DetailModal';
 import { GalleryImage, FilterState } from './types';
+import { MOCK_IMAGES } from './constants';
 import { SparklesIcon, DocumentTextIcon, HeartIcon } from './components/Icons';
 
 function App() {
@@ -18,7 +19,11 @@ function App() {
     fetch('/api/images')
       .then(res => res.json())
       .then(data => {
-        setImages(data);
+        if (data.length === 0) {
+           setImages(MOCK_IMAGES);
+        } else {
+           setImages(data);
+        }
         setIsLoading(false);
       })
       .catch(err => {
