@@ -6,9 +6,10 @@ interface SidebarProps {
   images: GalleryImage[];
   currentFilter: FilterState;
   onFilterChange: (filter: FilterState) => void;
+  refreshKey?: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange, refreshKey }) => {
   const [tagSearch, setTagSearch] = useState('');
   const [userTagSearch, setUserTagSearch] = useState('');
   const [folders, setFolders] = useState<string[]>([]);
@@ -22,6 +23,14 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
     fetchAutoTags();
     fetchUserTags();
   }, [images.length]); // Refetch when number of images changes
+
+  // Refetch tags when refreshKey changes (triggered by tag additions/removals)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      fetchAutoTags();
+      fetchUserTags();
+    }
+  }, [refreshKey]);
 
   // Refetch tags when search changes
   useEffect(() => {

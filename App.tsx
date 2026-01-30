@@ -26,6 +26,9 @@ function App() {
   
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Trigger for sidebar refresh
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
   // Fetch images from backend with pagination
   const fetchImages = async (pageNum: number = 1, append: boolean = false) => {
@@ -134,6 +137,11 @@ function App() {
     // Remove from local state
     setImages(prev => prev.filter(img => img.id !== id));
     setTotalImages(prev => prev - 1);
+  };
+
+  const handleTagsChanged = () => {
+    // Trigger sidebar refresh when tags are added or removed
+    setSidebarRefreshKey(prev => prev + 1);
   };
 
   // Upload files (extracted logic for reuse)
@@ -277,7 +285,8 @@ function App() {
       <Sidebar 
         images={images} 
         currentFilter={filter} 
-        onFilterChange={setFilter} 
+        onFilterChange={setFilter}
+        refreshKey={sidebarRefreshKey}
       />
 
       {/* Main Content */}
@@ -404,6 +413,7 @@ function App() {
           onUpdateStory={handleUpdateStory}
           onToggleFavorite={handleToggleFavorite}
           onDelete={handleDeleteImage}
+          onTagsChanged={handleTagsChanged}
         />
       )}
 

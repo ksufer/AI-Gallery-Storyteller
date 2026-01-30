@@ -9,9 +9,10 @@ interface DetailModalProps {
   onUpdateStory: (id: string, story: string) => void;
   onToggleFavorite: (id: string) => void;
   onDelete?: (id: string) => void;
+  onTagsChanged?: () => void;
 }
 
-const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete }) => {
+const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete, onTagsChanged }) => {
   const [story, setStory] = useState(image.story || '');
   const [isGenerating, setIsGenerating] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
@@ -128,6 +129,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
       if (result.success) {
         setTags(result.tags || []);
         setNewTagInput('');
+        // Notify parent to refresh sidebar
+        if (onTagsChanged) {
+          onTagsChanged();
+        }
       } else {
         alert(`添加标签失败: ${result.error}`);
       }
@@ -149,6 +154,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
 
       if (result.success) {
         setTags(result.tags || []);
+        // Notify parent to refresh sidebar
+        if (onTagsChanged) {
+          onTagsChanged();
+        }
       } else {
         alert(`删除标签失败: ${result.error}`);
       }
