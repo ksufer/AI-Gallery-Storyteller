@@ -48,6 +48,26 @@ export interface ImageInput {
   mimeType: string;
 }
 
+// 禁词替换表 - 用于手动替换敏感词汇
+const FORBIDDEN_WORDS_MAP: Record<string, string> = {
+  // 示例：可根据需要添加更多替换规则
+  '少女': '美女',
+  // 可以继续添加更多需要替换的词汇...
+};
+
+/**
+ * 应用禁词表替换
+ */
+const applyForbiddenWordsFilter = (text: string): string => {
+  let filtered = text;
+  Object.entries(FORBIDDEN_WORDS_MAP).forEach(([forbidden, replacement]) => {
+    // 使用全局替换，不区分大小写
+    const regex = new RegExp(forbidden, 'gi');
+    filtered = filtered.replace(regex, replacement);
+  });
+  return filtered;
+};
+
 // Test age filter on module load (development only)
 if (process.env.NODE_ENV !== 'production') {
   const testCases = [
@@ -81,7 +101,7 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
   try {
     // 过滤掉年龄相关的提示词，以避免触发安全过滤器
     // 支持中英文混合：16yo, 18 year old, 16岁, 十六岁等
-    const safePrompts = prompts.map(p => {
+    let safePrompts = prompts.map(p => {
         let cleaned = p;
         
         // 1. 英文格式：16yo, 18 year old, 20 years old
@@ -102,6 +122,9 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
         
         return cleaned;
     });
+
+    // 5. 应用禁词表替换
+    safePrompts = safePrompts.map(p => applyForbiddenWordsFilter(p));
 
     // 简化 promptText，因为主要指令已经在 SYSTEM_INSTRUCTION 中定义
     const promptText = `提示词: ${safePrompts.join(', ')}`;
@@ -173,9 +196,53 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
       }
     }
 
-    // 3. 检查 promptFeedback
+    // 3. 检查 promptFeedback - 特别处理 PROHIBITED_CONTENT
     if (response.promptFeedback && response.promptFeedback.blockReason) {
-       return `[提示词拦截] 原因: ${response.promptFeedback.blockReason}`;
+      const blockReason = response.promptFeedback.blockReason;
+      
+      // 如果是 PROHIBITED_CONTENT 且有图片，尝试降级策略：只用图片生成
+      if (blockReason === 'PROHIBITED_CONTENT' && image) {
+        console.log("=== 检测到 PROHIBITED_CONTENT，尝试降级策略（仅图片） ===");
+        try {
+          // 重新调用 API，只传图片，不传提示词
+          const fallbackContents = [
+            {
+              inlineData: {
+                mimeType: image.mimeType,
+                data: image.data
+              }
+            }
+          ];
+          
+          const fallbackResponse = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: fallbackContents,
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              temperature: 0.8,
+              safetySettings: [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+              ] as any[],
+            }
+          });
+          
+          if (fallbackResponse.text) {
+            // @ts-ignore
+            const fallbackText = typeof fallbackResponse.text === 'function' ? fallbackResponse.text() : fallbackResponse.text;
+            if (fallbackText) {
+              console.log("=== 降级策略成功 ===");
+              return `${fallbackText}\n\n（提示词未通过）`;
+            }
+          }
+        } catch (fallbackError) {
+          console.error("降级策略失败:", fallbackError);
+        }
+      }
+      
+      return `[提示词拦截] 原因: ${blockReason}`;
     }
     
     return "生成失败，未能生成故事 (API 返回空内容)。";
