@@ -153,6 +153,9 @@ function App() {
         // Revert on failure
         setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !newFavoriteStatus } : img));
         console.error("Failed to update favorite status");
+      } else {
+        // Trigger sidebar refresh to update favorite count
+        setSidebarRefreshKey(prev => prev + 1);
       }
     } catch (err) {
       // Revert on error

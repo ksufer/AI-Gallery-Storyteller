@@ -16,17 +16,26 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
   const [folderCounts, setFolderCounts] = useState<{ [key: string]: number }>({});
   const [autoTags, setAutoTags] = useState<Array<{ name: string, count: number }>>([]);
   const [userTags, setUserTags] = useState<Array<{ name: string, count: number }>>([]);
+  const [totalImageCount, setTotalImageCount] = useState(0);
+  const [favoriteCount, setFavoriteCount] = useState(0);
 
-  // Fetch folders and tags on mount and when images change
+  // Fetch counts, folders and tags on mount
   useEffect(() => {
+    fetchCounts();
     fetchFolders();
     fetchAutoTags();
     fetchUserTags();
-  }, [images.length]); // Refetch when number of images changes
+  }, []); // Only on mount
 
-  // Refetch tags when refreshKey changes (triggered by tag additions/removals)
+  // Refetch counts when images change
+  useEffect(() => {
+    fetchCounts();
+  }, [images.length]);
+
+  // Refetch tags and counts when refreshKey changes (triggered by tag additions/removals or favorite changes)
   useEffect(() => {
     if (refreshKey !== undefined && refreshKey > 0) {
+      fetchCounts();
       fetchAutoTags();
       fetchUserTags();
     }
@@ -40,6 +49,26 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
   useEffect(() => {
     fetchUserTags();
   }, [userTagSearch]);
+
+  const fetchCounts = async () => {
+    try {
+      // Fetch total count
+      const totalResponse = await fetch('/api/images?page=1&limit=1');
+      const totalData = await totalResponse.json();
+      if (totalData.total !== undefined) {
+        setTotalImageCount(totalData.total);
+      }
+
+      // Fetch favorite count
+      const favoriteResponse = await fetch('/api/images?page=1&limit=1&favorite=true');
+      const favoriteData = await favoriteResponse.json();
+      if (favoriteData.total !== undefined) {
+        setFavoriteCount(favoriteData.total);
+      }
+    } catch (error) {
+      console.error('Failed to fetch counts:', error);
+    }
+  };
 
   const fetchFolders = async () => {
     try {
@@ -103,14 +132,14 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
             active={currentFilter.type === 'all'} 
             onClick={() => onFilterChange({ type: 'all' })}
             label="全部图片"
-            count={images.length}
+            count={totalImageCount}
           />
           <NavItem 
             active={currentFilter.type === 'favorite'} 
             onClick={() => onFilterChange({ type: 'favorite' })}
             label="收藏"
             icon={<HeartIcon className="w-4 h-4" />}
-            count={images.filter(i => i.isFavorite).length}
+            count={favoriteCount}
           />
         </div>
 
