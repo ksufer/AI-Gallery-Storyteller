@@ -30,6 +30,11 @@ function App() {
       if (filter.type === 'favorite') return img.isFavorite;
       if (filter.type === 'checkpoint' && filter.value) return img.metadata.checkpoints.includes(filter.value);
       if (filter.type === 'lora' && filter.value) return img.metadata.loras.includes(filter.value);
+      if (filter.type === 'tag' && filter.value) {
+        // Extract tags from prompts on the fly or pre-process them
+        const tags = img.metadata.prompts.flatMap(p => p.split(',').map(s => s.trim()).filter(s => s.length > 0 && s.length < 50));
+        return tags.includes(filter.value);
+      }
       return true;
     });
   }, [images, filter]);

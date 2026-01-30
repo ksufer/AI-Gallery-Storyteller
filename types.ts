@@ -26,7 +26,7 @@ export interface GalleryImage {
   dateAdded: string;
 }
 
-export type FilterType = 'all' | 'checkpoint' | 'lora' | 'favorite';
+export type FilterType = 'all' | 'checkpoint' | 'lora' | 'favorite' | 'tag';
 
 export interface FilterState {
   type: FilterType;

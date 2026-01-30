@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { GalleryImage, FilterState } from '../types';
-import { TagIcon, HeartIcon } from './Icons';
+import { TagIcon, HeartIcon, MagnifyingGlassIcon } from './Icons';
 
 interface SidebarProps {
   images: GalleryImage[];
@@ -9,9 +9,42 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange }) => {
+  const [tagSearch, setTagSearch] = useState('');
+
   // Aggregate data for filters
   const allCheckpoints = Array.from(new Set(images.flatMap(img => img.metadata.checkpoints)));
   const allLoras = Array.from(new Set(images.flatMap(img => img.metadata.loras)));
+
+  // Extract Tags from Prompts
+  const allTags = useMemo(() => {
+      const tagCounts: Record<string, number> = {};
+      
+      images.forEach(img => {
+          img.metadata.prompts.forEach(prompt => {
+              const parts = prompt.split(',');
+              parts.forEach(part => {
+                  const tag = part.trim();
+                  if (tag.length > 0 && tag.length < 50) {
+                      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                  }
+              });
+          });
+      });
+
+      let tags = Object.entries(tagCounts)
+          .sort(([, a], [, b]) => b - a)
+          .map(([tag]) => tag);
+      
+      if (tagSearch) {
+          const lowerSearch = tagSearch.toLowerCase();
+          tags = tags.filter(t => t.toLowerCase().includes(lowerSearch));
+      } else {
+          // Limit to top 100 if no search
+          tags = tags.slice(0, 100);
+      }
+      
+      return tags;
+  }, [images, tagSearch]);
 
   return (
     <div className="w-64 h-screen fixed left-0 top-0 bg-[#121212] border-r border-white/5 flex flex-col z-40 hidden md:flex">
@@ -41,6 +74,50 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
             icon={<HeartIcon className="w-4 h-4" />}
             count={images.filter(i => i.isFavorite).length}
           />
+        </div>
+
+        {/* Tags Section */}
+        <div>
+           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2 flex justify-between items-center">
+             常用标签
+             <span className="text-[10px] text-gray-600">{allTags.length}</span>
+           </h3>
+           
+           {/* Search Box */}
+           <div className="px-2 mb-3">
+             <div className="relative group">
+                <MagnifyingGlassIcon className="w-3 h-3 text-gray-500 absolute left-2 top-2" />
+                <input 
+                  type="text" 
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  placeholder="搜索标签..." 
+                  className="w-full bg-[#18181b] border border-white/5 rounded-md py-1.5 pl-7 pr-2 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
+             </div>
+           </div>
+
+           {/* Tags Cloud / List */}
+           <div className="flex flex-wrap gap-1.5 px-2 max-h-60 overflow-y-auto custom-scrollbar">
+            {allTags.map(tag => {
+              const isActive = currentFilter.type === 'tag' && currentFilter.value === tag;
+              return (
+                <button
+                  key={tag}
+                  onClick={() => onFilterChange({ type: 'tag', value: tag })}
+                  className={`text-[10px] px-2 py-1 rounded border transition-all truncate max-w-full ${
+                    isActive 
+                      ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400' 
+                      : 'bg-white/5 border-transparent text-gray-400 hover:border-white/10 hover:text-gray-200'
+                  }`}
+                  title={tag}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+             {allTags.length === 0 && <span className="text-xs text-gray-700 px-2 w-full text-center py-2">无结果</span>}
+           </div>
         </div>
 
         {/* Checkpoints Section */}
@@ -81,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
 
       {/* Footer */}
       <div className="p-4 border-t border-white/5 text-[10px] text-gray-600">
-        本地图库 v1.0.0
+        本地图库 v1.1.0
       </div>
     </div>
   );
@@ -98,7 +175,7 @@ const NavItem = ({ active, onClick, label, count, icon }: any) => (
   >
     <div className="flex items-center gap-2 truncate">
       {icon}
-      <span className="truncate">{label}</span>
+      <span className="truncate" title={label}>{label}</span>
     </div>
     {count !== undefined && (
       <span className={`text-[10px] py-0.5 px-1.5 rounded-full ${active ? 'bg-white/20' : 'bg-white/5'}`}>
