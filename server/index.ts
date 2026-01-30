@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getTagsWithCount, upsertImage } from './db.ts';
+import { getImages, getTagsWithCount, upsertImage, updateImageStory } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import type { GalleryImage } from '../types.ts';
 
@@ -66,7 +66,7 @@ app.get('/api/images', async (req, res) => {
                 metadata: JSON.parse(row.meta_json),
                 isFavorite: false, // Not stored in DB yet
                 dateAdded: row.date_added,
-                story: undefined
+                story: row.story || undefined
             };
         });
         
@@ -85,6 +85,24 @@ app.get('/api/tags', (req, res) => {
     } catch (error) {
          console.error("API Error:", error);
          res.status(500).json({ error: "Failed to fetch tags" });
+    }
+});
+
+// Update story endpoint
+app.patch('/api/images/:id/story', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { story } = req.body;
+        
+        if (!story) {
+            return res.status(400).json({ error: "Story content is required" });
+        }
+        
+        updateImageStory(id, story);
+        res.json({ success: true, message: "Story updated" });
+    } catch (error) {
+        console.error("API Error:", error);
+        res.status(500).json({ error: "Failed to update story" });
     }
 });
 

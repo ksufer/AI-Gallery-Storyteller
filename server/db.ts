@@ -23,9 +23,17 @@ export const initDb = () => {
             id TEXT PRIMARY KEY,
             file_path TEXT UNIQUE NOT NULL,
             date_added TEXT,
-            meta_json TEXT
+            meta_json TEXT,
+            story TEXT
         )
     `);
+
+    // Add story column if it doesn't exist (migration)
+    try {
+        db.exec(`ALTER TABLE images ADD COLUMN story TEXT`);
+    } catch (e) {
+        // Column probably exists, ignore
+    }
 
     // Tags table
     db.exec(`
@@ -51,9 +59,14 @@ export const initDb = () => {
 initDb();
 
 // Statements
-const insertImage = db.prepare(`
-    INSERT OR REPLACE INTO images (id, file_path, date_added, meta_json)
-    VALUES (?, ?, ?, ?)
+// Use ON CONFLICT DO UPDATE to preserve other fields like story
+const upsertImageStmt = db.prepare(`
+    INSERT INTO images (id, file_path, date_added, meta_json)
+    VALUES (@id, @filePath, @dateAdded, @metaJson)
+    ON CONFLICT(id) DO UPDATE SET
+        file_path = excluded.file_path,
+        date_added = excluded.date_added,
+        meta_json = excluded.meta_json
 `);
 
 const insertTag = db.prepare(`
@@ -76,11 +89,15 @@ const deleteImageStmt = db.prepare(`
     DELETE FROM images WHERE id = ?
 `);
 
+const updateStoryStmt = db.prepare(`
+    UPDATE images SET story = ? WHERE id = ?
+`);
+
 export const upsertImage = (id: string, filePath: string, dateAdded: string, meta: any) => {
     const metaJson = JSON.stringify(meta);
     
     const transaction = db.transaction(() => {
-        insertImage.run(id, filePath, dateAdded, metaJson);
+        upsertImageStmt.run({ id, filePath, dateAdded, metaJson });
         
         // Handle tags
         deleteImageTags.run(id);
@@ -112,6 +129,10 @@ export const upsertImage = (id: string, filePath: string, dateAdded: string, met
 
 export const deleteImage = (id: string) => {
     deleteImageStmt.run(id);
+};
+
+export const updateImageStory = (id: string, story: string) => {
+    updateStoryStmt.run(story, id);
 };
 
 export const getImages = () => {

@@ -48,7 +48,15 @@ function App() {
 
   // Handlers
   const handleUpdateStory = (id: string, newStory: string) => {
+    // Optimistic update
     setImages(prev => prev.map(img => img.id === id ? { ...img, story: newStory } : img));
+
+    // Persist to backend
+    fetch(`/api/images/${id}/story`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story: newStory })
+    }).catch(err => console.error("Failed to persist story:", err));
   };
 
   const handleToggleFavorite = (id: string) => {
