@@ -144,7 +144,7 @@ export const getImageTags = (imageId: string) => {
         SELECT t.name FROM tags t
         JOIN image_tags it ON t.id = it.tag_id
         WHERE it.image_id = ?
-    `).all().map((row: any) => row.name);
+    `).all(imageId).map((row: any) => row.name);
 };
 
 export const getTagsWithCount = (search?: string) => {
