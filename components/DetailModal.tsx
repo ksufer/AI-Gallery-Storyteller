@@ -31,7 +31,28 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
   const handleGenerateStory = useCallback(async () => {
     setIsGenerating(true);
     try {
-      const newStory = await generateStoryFromPrompts(image.metadata.prompts);
+      // Fetch image data
+      const response = await fetch(image.url);
+      const blob = await response.blob();
+      
+      // Convert to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<{data: string, mimeType: string}>((resolve, reject) => {
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64String = result.split(',')[1];
+          resolve({
+            data: base64String,
+            mimeType: blob.type
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      const imageData = await base64Promise;
+
+      const newStory = await generateStoryFromPrompts(image.metadata.prompts, imageData);
       setStory(newStory);
       onUpdateStory(image.id, newStory);
     } catch (e) {
@@ -40,7 +61,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     } finally {
       setIsGenerating(false);
     }
-  }, [image.metadata.prompts, image.id, onUpdateStory]);
+  }, [image.metadata.prompts, image.id, image.url, onUpdateStory]);
 
   const handleStorySave = () => {
      onUpdateStory(image.id, story);
