@@ -55,6 +55,13 @@ export const initDb = () => {
         // Column probably exists, ignore
     }
 
+    // Add is_favorite column if it doesn't exist (migration)
+    try {
+        db.exec(`ALTER TABLE images ADD COLUMN is_favorite INTEGER DEFAULT 0`);
+    } catch (e) {
+        // Column probably exists, ignore
+    }
+
     // Tags table
     db.exec(`
         CREATE TABLE IF NOT EXISTS tags (
@@ -121,6 +128,10 @@ const updateStoryStmt = db.prepare(`
     UPDATE images SET story = ? WHERE id = ?
 `);
 
+const updateFavoriteStmt = db.prepare(`
+    UPDATE images SET is_favorite = ? WHERE id = ?
+`);
+
 export const upsertImage = (id: string, filePath: string, dateAdded: string, meta: any) => {
     const metaJson = JSON.stringify(meta);
     
@@ -164,8 +175,16 @@ export const updateImageStory = (id: string, story: string) => {
     updateStoryStmt.run(story, id);
 };
 
+export const updateImageFavorite = (id: string, isFavorite: boolean) => {
+    updateFavoriteStmt.run(isFavorite ? 1 : 0, id);
+};
+
 export const getImages = () => {
     return db.prepare('SELECT * FROM images ORDER BY date_added DESC').all();
+};
+
+export const getFavoriteImages = () => {
+    return db.prepare('SELECT * FROM images WHERE is_favorite = 1 ORDER BY date_added DESC').all();
 };
 
 export const getImagesByTag = (tagName: string) => {

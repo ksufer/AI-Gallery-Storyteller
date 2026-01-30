@@ -47,6 +47,9 @@ function App() {
       if (filter.type === 'tag' && filter.value) {
         queryParams += `&tag=${encodeURIComponent(filter.value)}`;
       }
+      if (filter.type === 'favorite') {
+        queryParams += `&favorite=true`;
+      }
 
       const response = await fetch(`/api/images?${queryParams}`);
       const data = await response.json();
@@ -106,10 +109,9 @@ function App() {
   // Filter Logic (only for client-side filters)
   const filteredImages = useMemo(() => {
     return images.filter(img => {
-      // Tag and folder filters are handled by the API, so no need to filter again
-      if (filter.type === 'tag' || filter.type === 'folder') return true;
+      // Tag, folder, and favorite filters are handled by the API, so no need to filter again
+      if (filter.type === 'tag' || filter.type === 'folder' || filter.type === 'favorite') return true;
       
-      if (filter.type === 'favorite') return img.isFavorite;
       if (filter.type === 'checkpoint' && filter.value) return img.metadata.checkpoints.includes(filter.value);
       if (filter.type === 'lora' && filter.value) return img.metadata.loras.includes(filter.value);
       return true;
@@ -129,8 +131,34 @@ function App() {
     }).catch(err => console.error("Failed to persist story:", err));
   };
 
-  const handleToggleFavorite = (id: string) => {
-    setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !img.isFavorite } : img));
+  const handleToggleFavorite = async (id: string) => {
+    // Find the image to get its current favorite status
+    const image = images.find(img => img.id === id);
+    if (!image) return;
+
+    const newFavoriteStatus = !image.isFavorite;
+
+    // Optimistic update
+    setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: newFavoriteStatus } : img));
+
+    // Persist to backend
+    try {
+      const response = await fetch(`/api/images/${id}/favorite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite: newFavoriteStatus })
+      });
+
+      if (!response.ok) {
+        // Revert on failure
+        setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !newFavoriteStatus } : img));
+        console.error("Failed to update favorite status");
+      }
+    } catch (err) {
+      // Revert on error
+      setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !newFavoriteStatus } : img));
+      console.error("Failed to persist favorite:", err);
+    }
   };
 
   const handleDeleteImage = (id: string) => {

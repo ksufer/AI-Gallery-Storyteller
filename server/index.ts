@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getImagesByTag, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags } from './db.ts';
+import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
@@ -64,11 +64,17 @@ app.get('/api/images', async (req, res) => {
         // Get all rows based on filters
         let allRows: any[];
         
+        // Filter by favorite first (most efficient)
+        if (req.query.favorite === 'true') {
+            allRows = getFavoriteImages() as any[];
+        }
         // Filter by tag (from database)
-        if (req.query.tag) {
+        else if (req.query.tag) {
             const tagName = req.query.tag as string;
             allRows = getImagesByTag(tagName) as any[];
-        } else {
+        } 
+        // Get all images
+        else {
             allRows = getImages() as any[];
         }
         
@@ -82,12 +88,6 @@ app.get('/api/images', async (req, res) => {
                 row.file_path.includes(path.sep + folder + path.sep) || 
                 row.file_path.includes('/' + folder + '/')
             );
-        }
-        
-        // Filter by favorite
-        if (req.query.favorite === 'true') {
-            // Note: isFavorite is not in DB yet, so this won't filter anything currently
-            // This is a placeholder for future implementation
         }
         
         // Get total count
@@ -105,7 +105,7 @@ app.get('/api/images', async (req, res) => {
                 url: `/uploads/${urlPath}`,
                 fileName: path.basename(row.file_path),
                 metadata: JSON.parse(row.meta_json),
-                isFavorite: false, // Not stored in DB yet
+                isFavorite: row.is_favorite === 1,
                 dateAdded: row.date_added,
                 story: row.story || undefined
             };
@@ -159,6 +159,24 @@ app.patch('/api/images/:id/story', async (req, res) => {
     } catch (error) {
         console.error("API Error:", error);
         res.status(500).json({ error: "Failed to update story" });
+    }
+});
+
+// Update favorite endpoint
+app.patch('/api/images/:id/favorite', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isFavorite } = req.body;
+        
+        if (typeof isFavorite !== 'boolean') {
+            return res.status(400).json({ error: "isFavorite must be a boolean" });
+        }
+        
+        updateImageFavorite(id, isFavorite);
+        res.json({ success: true, message: "Favorite status updated", isFavorite });
+    } catch (error) {
+        console.error("API Error:", error);
+        res.status(500).json({ error: "Failed to update favorite status" });
     }
 });
 
