@@ -1,0 +1,5 @@
+{
+  "name": "AIGallery - Storyteller",
+  "description": "A high-end local image manager for Stable Diffusion and ComfyUI with AI-powered story generation.",
+  "requestFramePermissions": []
+}
