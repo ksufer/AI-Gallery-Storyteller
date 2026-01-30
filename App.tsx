@@ -78,9 +78,14 @@ function App() {
 
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-      // Append lastModified timestamp for each file
-      formData.append('lastModified', files[i].lastModified.toString());
+      const file = files[i];
+      // Only append image files
+      if (['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.type.toLowerCase()) || 
+          /\.(png|jpe?g|webp)$/i.test(file.name)) {
+        formData.append('files', file);
+        // Append lastModified timestamp for each file
+        formData.append('lastModified', file.lastModified.toString());
+      }
     }
 
     try {

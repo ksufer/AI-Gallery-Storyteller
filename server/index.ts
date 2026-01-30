@@ -45,7 +45,8 @@ const upload = multer({
         if (allowedExts.includes(ext)) {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only image files are allowed.'));
+            // silently ignore non-image files instead of throwing error
+            cb(null, false);
         }
     }
 });
