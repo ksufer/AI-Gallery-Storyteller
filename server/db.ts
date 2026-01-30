@@ -47,6 +47,9 @@ export const initDb = () => {
     `);
 };
 
+// Initialize DB tables before preparing statements
+initDb();
+
 // Statements
 const insertImage = db.prepare(`
     INSERT OR REPLACE INTO images (id, file_path, date_added, meta_json)
@@ -144,6 +147,3 @@ export const getTagsWithCount = (search?: string) => {
 export const getImageByPath = (filePath: string) => {
     return db.prepare('SELECT * FROM images WHERE file_path = ?').get(filePath);
 };
-
-// Initialize on load
-initDb();

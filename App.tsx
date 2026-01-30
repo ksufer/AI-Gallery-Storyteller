@@ -9,9 +9,12 @@ function App() {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterState>({ type: 'all' });
   const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Fetch images from backend
-  useEffect(() => {
+  const fetchImages = () => {
     fetch('/api/images')
       .then(res => res.json())
       .then(data => {
@@ -22,6 +25,10 @@ function App() {
         console.error("Failed to load images:", err);
         setIsLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchImages();
   }, []);
 
   // Filter Logic
@@ -48,6 +55,62 @@ function App() {
     setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !img.isFavorite } : img));
   };
 
+  const handleBatchUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    setUploadStatus(null);
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+      // Append lastModified timestamp for each file
+      formData.append('lastModified', files[i].lastModified.toString());
+    }
+
+    try {
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setUploadStatus({ 
+          message: `成功上传 ${result.files.filter((f: any) => f.success).length} 个文件`, 
+          type: 'success' 
+        });
+        // Refresh images list
+        fetchImages();
+        // Clear file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      } else {
+        setUploadStatus({ 
+          message: result.error || '上传失败', 
+          type: 'error' 
+        });
+      }
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setUploadStatus({ 
+        message: error.message || '上传失败', 
+        type: 'error' 
+      });
+    } finally {
+      setIsUploading(false);
+      // Clear status message after 3 seconds
+      setTimeout(() => setUploadStatus(null), 3000);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const selectedImage = images.find(img => img.id === selectedImageId);
 
   return (
@@ -68,6 +131,39 @@ function App() {
               {filter.type === 'all' ? '图库' : filter.type === 'favorite' ? '收藏' : filter.value}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">共 {filteredImages.length} 张</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {uploadStatus && (
+              <div className={`text-sm px-3 py-1 rounded-md ${
+                uploadStatus.type === 'success' 
+                  ? 'bg-green-500/20 text-green-400' 
+                  : 'bg-red-500/20 text-red-400'
+              }`}>
+                {uploadStatus.message}
+              </div>
+            )}
+            <button
+              onClick={handleUploadClick}
+              disabled={isUploading}
+              className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isUploading ? (
+                <>
+                  <SparklesIcon className="w-4 h-4 animate-spin" />
+                  <span>上传中...</span>
+                </>
+              ) : (
+                <span>批量上传</span>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              onChange={handleBatchUpload}
+              className="hidden"
+            />
           </div>
         </header>
 

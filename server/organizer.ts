@@ -48,6 +48,32 @@ const isImageFile = (filename: string): boolean => {
     return ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
 };
 
+/**
+ * Generates a safe filename that avoids collisions by appending a counter if needed
+ * @param targetDir - The directory where the file will be saved
+ * @param originalName - The original filename
+ * @returns A unique filename that doesn't exist in the target directory
+ */
+export const getSafeFileName = async (targetDir: string, originalName: string): Promise<string> => {
+    const ext = path.extname(originalName);
+    const baseName = path.basename(originalName, ext);
+    let counter = 0;
+    let safeName = originalName;
+    
+    while (true) {
+        const testPath = path.join(targetDir, safeName);
+        try {
+            await fs.access(testPath);
+            // File exists, try with counter
+            counter++;
+            safeName = `${baseName}_${counter}${ext}`;
+        } catch {
+            // File doesn't exist, this name is safe
+            return safeName;
+        }
+    }
+};
+
 export const getAllImages = async (dir: string): Promise<string[]> => {
     let results: string[] = [];
     const list = await fs.readdir(dir, { withFileTypes: true });
