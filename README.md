@@ -51,7 +51,7 @@
 3.  **配置环境变量**
     在项目根目录创建 `.env.local` 文件，并添加你的 Gemini API Key：
     ```env
-    API_KEY=your_gemini_api_key_here
+    GEMINI_API_KEY=your_gemini_api_key_here
     # 可选: 修改端口
     # PORT=3000
     ```

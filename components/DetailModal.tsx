@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GalleryImage } from '../types';
-import { SparklesIcon, XMarkIcon, HeartIcon } from './Icons';
+import { SparklesIcon, XMarkIcon, HeartIcon, TrashIcon, PlusIcon } from './Icons';
 import { generateStoryFromPrompts } from '../services/geminiService';
 
 interface DetailModalProps {
@@ -8,16 +8,34 @@ interface DetailModalProps {
   onClose: () => void;
   onUpdateStory: (id: string, story: string) => void;
   onToggleFavorite: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite }) => {
+const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete }) => {
   const [story, setStory] = useState(image.story || '');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [isAddingTag, setIsAddingTag] = useState(false);
 
   // Sync internal state if prop changes
   useEffect(() => {
     setStory(image.story || '');
-  }, [image.story]);
+    // Fetch tags for this image
+    fetchTags();
+  }, [image.id, image.story]);
+
+  const fetchTags = async () => {
+    try {
+      const response = await fetch(`/api/images/${image.id}/tags`);
+      if (response.ok) {
+        const data = await response.json();
+        setTags(data.tags || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch tags:', error);
+    }
+  };
 
   // Handle ESC key to close
   useEffect(() => {
@@ -68,6 +86,78 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
      onUpdateStory(image.id, story);
   };
 
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    
+    const confirmed = window.confirm('确定要删除这张图片吗？此操作无法撤销，将同时删除文件和数据库记录。');
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/images/${image.id}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        onDelete(image.id);
+        onClose();
+      } else {
+        alert(`删除失败: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      alert(`删除失败: ${error.message}`);
+    }
+  };
+
+  const handleAddTag = async () => {
+    const tagName = newTagInput.trim();
+    if (!tagName) return;
+
+    setIsAddingTag(true);
+    try {
+      const response = await fetch(`/api/images/${image.id}/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tagName })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setTags(result.tags || []);
+        setNewTagInput('');
+      } else {
+        alert(`添加标签失败: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Add tag error:', error);
+      alert(`添加标签失败: ${error.message}`);
+    } finally {
+      setIsAddingTag(false);
+    }
+  };
+
+  const handleRemoveTag = async (tagName: string) => {
+    try {
+      const response = await fetch(`/api/images/${image.id}/tags/${encodeURIComponent(tagName)}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setTags(result.tags || []);
+      } else {
+        alert(`删除标签失败: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Remove tag error:', error);
+      alert(`删除标签失败: ${error.message}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 lg:p-8">
       {/* Backdrop */}
@@ -114,12 +204,23 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
               <button 
                 onClick={() => onToggleFavorite(image.id)}
                 className={`p-2 rounded-full border transition-all ${image.isFavorite ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'border-white/10 text-gray-400 hover:text-white'}`}
+                title="收藏"
               >
                 <HeartIcon className="w-5 h-5" solid={image.isFavorite} />
               </button>
+              {onDelete && (
+                <button 
+                  onClick={handleDelete}
+                  className="p-2 rounded-full border border-white/10 text-gray-400 hover:text-red-400 hover:border-red-500/50 transition-all"
+                  title="删除图片"
+                >
+                  <TrashIcon className="w-5 h-5" />
+                </button>
+              )}
               <button 
                 onClick={onClose} 
                 className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+                title="关闭"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
@@ -151,6 +252,51 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                  />
                  <div className="absolute inset-0 rounded-lg pointer-events-none border border-transparent group-hover:border-white/5 transition-colors"></div>
                </div>
+            </div>
+
+            {/* Tags Management */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-cyan-400 uppercase tracking-wider">标签管理</h4>
+              <div className="flex flex-wrap gap-2 p-3 bg-black/30 rounded-lg border border-white/5 min-h-[60px]">
+                {tags.length === 0 ? (
+                  <span className="text-xs text-gray-600">暂无标签</span>
+                ) : (
+                  tags.map(tag => (
+                    <span 
+                      key={tag}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-cyan-500/20 border border-cyan-500/30 rounded-full text-xs text-cyan-400 group hover:border-cyan-500/50 transition-colors"
+                    >
+                      {tag}
+                      <button
+                        onClick={() => handleRemoveTag(tag)}
+                        className="opacity-60 hover:opacity-100 hover:text-red-400 transition-all"
+                        title="删除标签"
+                      >
+                        <XMarkIcon className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                  placeholder="添加新标签..."
+                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                  disabled={isAddingTag}
+                />
+                <button
+                  onClick={handleAddTag}
+                  disabled={isAddingTag || !newTagInput.trim()}
+                  className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  添加
+                </button>
+              </div>
             </div>
 
             {/* Prompts */}

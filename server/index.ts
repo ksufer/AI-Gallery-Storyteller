@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getTagsWithCount, upsertImage, updateImageStory } from './db.ts';
+import { getImages, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
 const UPLOADS_DIR = path.resolve(__dirname, '../uploads');
 const CONFIG_DIR = path.resolve(__dirname, '../config');
 
@@ -66,6 +66,15 @@ app.get('/api/images', async (req, res) => {
         
         // Apply filtering
         let filteredRows = allRows;
+        
+        // Filter by folder
+        if (req.query.folder) {
+            const folder = req.query.folder as string;
+            filteredRows = filteredRows.filter(row => 
+                row.file_path.includes(path.sep + folder + path.sep) || 
+                row.file_path.includes('/' + folder + '/')
+            );
+        }
         
         // Filter by favorite
         if (req.query.favorite === 'true') {
@@ -141,6 +150,184 @@ app.patch('/api/images/:id/story', async (req, res) => {
     } catch (error) {
         console.error("API Error:", error);
         res.status(500).json({ error: "Failed to update story" });
+    }
+});
+
+// Delete image endpoint
+app.delete('/api/images/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Get image info from database
+        const image = getImageById(id) as any;
+        if (!image) {
+            return res.status(404).json({ success: false, error: "Image not found" });
+        }
+        
+        // Delete physical file
+        try {
+            await fs.unlink(image.file_path);
+            console.log(`Deleted file: ${image.file_path}`);
+        } catch (fileError: any) {
+            console.error(`Failed to delete file ${image.file_path}:`, fileError);
+            // Continue to delete DB record even if file doesn't exist
+        }
+        
+        // Delete from database
+        deleteImage(id);
+        
+        res.json({ success: true, message: "Image deleted successfully" });
+    } catch (error: any) {
+        console.error("Delete API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to delete image" });
+    }
+});
+
+// Get image tags endpoint
+app.get('/api/images/:id/tags', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const tags = getImageTags(id);
+        res.json({ success: true, tags });
+    } catch (error: any) {
+        console.error("Get Tags API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to get tags" });
+    }
+});
+
+// Add tag to image endpoint
+app.post('/api/images/:id/tags', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { tagName } = req.body;
+        
+        if (!tagName || typeof tagName !== 'string' || tagName.trim().length === 0) {
+            return res.status(400).json({ success: false, error: "Tag name is required" });
+        }
+        
+        const trimmedTag = tagName.trim();
+        if (trimmedTag.length > 50) {
+            return res.status(400).json({ success: false, error: "Tag name too long (max 50 characters)" });
+        }
+        
+        // Check if image exists
+        const image = getImageById(id);
+        if (!image) {
+            return res.status(404).json({ success: false, error: "Image not found" });
+        }
+        
+        addTagToImage(id, trimmedTag);
+        const tags = getImageTags(id);
+        
+        res.json({ success: true, tags });
+    } catch (error: any) {
+        console.error("Add Tag API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to add tag" });
+    }
+});
+
+// Remove tag from image endpoint
+app.delete('/api/images/:id/tags/:tagName', async (req, res) => {
+    try {
+        const { id, tagName } = req.params;
+        
+        removeTagFromImage(id, decodeURIComponent(tagName));
+        const tags = getImageTags(id);
+        
+        res.json({ success: true, tags });
+    } catch (error: any) {
+        console.error("Remove Tag API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to remove tag" });
+    }
+});
+
+// Get forbidden words settings
+app.get('/api/settings/forbidden-words', async (req, res) => {
+    try {
+        const configPath = path.join(CONFIG_DIR, 'forbidden-words.json');
+        
+        try {
+            const content = await fs.readFile(configPath, 'utf-8');
+            const words = JSON.parse(content);
+            res.json({ success: true, data: words });
+        } catch (error: any) {
+            // If file doesn't exist, return empty object
+            if (error.code === 'ENOENT') {
+                res.json({ success: true, data: {} });
+            } else {
+                throw error;
+            }
+        }
+    } catch (error: any) {
+        console.error("Get Settings API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to read settings" });
+    }
+});
+
+// Update forbidden words settings
+app.put('/api/settings/forbidden-words', async (req, res) => {
+    try {
+        const words = req.body;
+        
+        // Validate that it's an object
+        if (!words || typeof words !== 'object' || Array.isArray(words)) {
+            return res.status(400).json({ success: false, error: "Invalid format: must be an object" });
+        }
+        
+        // Validate all keys and values are strings
+        for (const [key, value] of Object.entries(words)) {
+            if (typeof key !== 'string' || typeof value !== 'string') {
+                return res.status(400).json({ success: false, error: "All keys and values must be strings" });
+            }
+        }
+        
+        const configPath = path.join(CONFIG_DIR, 'forbidden-words.json');
+        
+        // Ensure config directory exists
+        try {
+            await fs.access(CONFIG_DIR);
+        } catch {
+            await fs.mkdir(CONFIG_DIR, { recursive: true });
+        }
+        
+        // Write to file with pretty formatting
+        await fs.writeFile(configPath, JSON.stringify(words, null, 2), 'utf-8');
+        
+        res.json({ success: true, message: "Settings updated successfully" });
+    } catch (error: any) {
+        console.error("Update Settings API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to update settings" });
+    }
+});
+
+// Get folders list
+app.get('/api/folders', async (req, res) => {
+    try {
+        const entries = await fs.readdir(UPLOADS_DIR, { withFileTypes: true });
+        
+        // Filter for date folders (YYYY-MM-DD format)
+        const dateFolderRegex = /^\d{4}-\d{2}-\d{2}$/;
+        const folders = entries
+            .filter(entry => entry.isDirectory() && dateFolderRegex.test(entry.name))
+            .map(entry => entry.name)
+            .sort()
+            .reverse(); // Most recent first
+        
+        // Count images in each folder
+        const counts: { [key: string]: number } = {};
+        const allImages = getImages() as any[];
+        
+        for (const folder of folders) {
+            counts[folder] = allImages.filter(img => 
+                img.file_path.includes(path.sep + folder + path.sep) || 
+                img.file_path.includes('/' + folder + '/')
+            ).length;
+        }
+        
+        res.json({ success: true, folders, counts });
+    } catch (error: any) {
+        console.error("Get Folders API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to get folders" });
     }
 });
 

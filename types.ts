@@ -26,11 +26,11 @@ export interface GalleryImage {
   dateAdded: string;
 }
 
-export type FilterType = 'all' | 'checkpoint' | 'lora' | 'favorite' | 'tag';
+export type FilterType = 'all' | 'checkpoint' | 'lora' | 'favorite' | 'tag' | 'folder';
 
 export interface FilterState {
   type: FilterType;
-  value?: string;
+  value?: string; // folder 类型时为日期字符串 (YYYY-MM-DD)
 }
 
 // Pagination types

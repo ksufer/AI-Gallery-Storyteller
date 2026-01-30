@@ -140,7 +140,7 @@ const VirtualMasonryGallery: React.FC<VirtualMasonryGalleryProps> = ({
 
   if (images.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-gray-600 px-6">
+      <div className="flex flex-col items-center justify-center h-full text-gray-600 px-6">
         <SparklesIcon className="w-12 h-12 mb-4 opacity-20" />
         <p className="text-lg mb-6">当前筛选下没有图片</p>
         <div className="max-w-md text-center space-y-2 text-sm">
@@ -171,16 +171,18 @@ const VirtualMasonryGallery: React.FC<VirtualMasonryGalleryProps> = ({
   }
 
   return (
-    <Virtuoso
-      style={{ height: 'calc(100vh - 180px)' }}
-      totalCount={virtualizedRows.length}
-      itemContent={rowRenderer}
-      endReached={handleEndReached}
-      components={{
-        Footer
-      }}
-      overscan={200}
-    />
+    <div className="h-full">
+      <Virtuoso
+        style={{ height: '100%' }}
+        totalCount={virtualizedRows.length}
+        itemContent={rowRenderer}
+        endReached={handleEndReached}
+        components={{
+          Footer
+        }}
+        overscan={200}
+      />
+    </div>
   );
 };
 

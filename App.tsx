@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import DetailModal from './components/DetailModal';
+import SettingsModal from './components/SettingsModal';
 import VirtualMasonryGallery from './components/VirtualMasonryGallery';
 import { GalleryImage, FilterState, PaginatedResponse } from './types';
 import { MOCK_IMAGES } from './constants';
-import { SparklesIcon } from './components/Icons';
+import { SparklesIcon, CogIcon } from './components/Icons';
 
 function App() {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -15,6 +16,7 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
+  const [showSettings, setShowSettings] = useState(false);
   
   // Pagination state
   const [page, setPage] = useState(1);
@@ -34,7 +36,13 @@ function App() {
         setIsLoading(true);
       }
 
-      const response = await fetch(`/api/images?page=${pageNum}&limit=20`);
+      // Build query parameters
+      let queryParams = `page=${pageNum}&limit=20`;
+      if (filter.type === 'folder' && filter.value) {
+        queryParams += `&folder=${encodeURIComponent(filter.value)}`;
+      }
+
+      const response = await fetch(`/api/images?${queryParams}`);
       const data = await response.json();
       
       // Check if response is paginated
@@ -119,6 +127,12 @@ function App() {
 
   const handleToggleFavorite = (id: string) => {
     setImages(prev => prev.map(img => img.id === id ? { ...img, isFavorite: !img.isFavorite } : img));
+  };
+
+  const handleDeleteImage = (id: string) => {
+    // Remove from local state
+    setImages(prev => prev.filter(img => img.id !== id));
+    setTotalImages(prev => prev - 1);
   };
 
   // Upload files (extracted logic for reuse)
@@ -267,7 +281,7 @@ function App() {
 
       {/* Main Content */}
       <main 
-        className="md:pl-64 min-h-screen transition-all duration-300 relative"
+        className="md:pl-64 h-screen flex flex-col transition-all duration-300 relative"
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -290,14 +304,24 @@ function App() {
           </div>
         )}
         
-        <header className="sticky top-0 z-30 bg-[#121212]/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
+        <header className="flex-none sticky top-0 z-30 bg-[#121212]/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-medium text-white capitalize">
-              {filter.type === 'all' ? '图库' : filter.type === 'favorite' ? '收藏' : filter.value}
+              {filter.type === 'all' ? '图库' : 
+               filter.type === 'favorite' ? '收藏' : 
+               filter.type === 'folder' ? filter.value :
+               filter.value}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">共 {filteredImages.length} 张</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors border border-white/10"
+              title="设置"
+            >
+              <CogIcon className="w-5 h-5" />
+            </button>
             {uploadStatus && (
               <div className={`text-sm px-3 py-1 rounded-md ${
                 uploadStatus.type === 'success' 
@@ -354,19 +378,21 @@ function App() {
           </div>
         </header>
 
-        {isLoading ? (
-          <div className="flex justify-center items-center h-[calc(100vh-180px)]">
-            <SparklesIcon className="w-8 h-8 animate-spin text-cyan-500" />
-          </div>
-        ) : (
-          <VirtualMasonryGallery
-            images={filteredImages}
-            onImageClick={setSelectedImageId}
-            onLoadMore={loadMore}
-            hasMore={hasMore}
-            isLoading={isLoadingMore}
-          />
-        )}
+        <div className="flex-1 overflow-hidden">
+          {isLoading ? (
+            <div className="flex justify-center items-center h-full">
+              <SparklesIcon className="w-8 h-8 animate-spin text-cyan-500" />
+            </div>
+          ) : (
+            <VirtualMasonryGallery
+              images={filteredImages}
+              onImageClick={setSelectedImageId}
+              onLoadMore={loadMore}
+              hasMore={hasMore}
+              isLoading={isLoadingMore}
+            />
+          )}
+        </div>
       </main>
 
       {/* Detail Modal */}
@@ -376,6 +402,14 @@ function App() {
           onClose={() => setSelectedImageId(null)} 
           onUpdateStory={handleUpdateStory}
           onToggleFavorite={handleToggleFavorite}
+          onDelete={handleDeleteImage}
+        />
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal 
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>

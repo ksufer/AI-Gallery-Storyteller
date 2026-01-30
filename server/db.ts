@@ -168,3 +168,30 @@ export const getTagsWithCount = (search?: string) => {
 export const getImageByPath = (filePath: string) => {
     return db.prepare('SELECT * FROM images WHERE file_path = ?').get(filePath);
 };
+
+export const getImageById = (id: string) => {
+    return db.prepare('SELECT * FROM images WHERE id = ?').get(id);
+};
+
+// Tag management functions
+const deleteImageTagStmt = db.prepare(`
+    DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?
+`);
+
+export const addTagToImage = (imageId: string, tagName: string) => {
+    const transaction = db.transaction(() => {
+        insertTag.run(tagName);
+        const tagRow = getTagId.get(tagName) as { id: number } | undefined;
+        if (tagRow) {
+            insertImageTag.run(imageId, tagRow.id);
+        }
+    });
+    transaction();
+};
+
+export const removeTagFromImage = (imageId: string, tagName: string) => {
+    const tagRow = getTagId.get(tagName) as { id: number } | undefined;
+    if (tagRow) {
+        deleteImageTagStmt.run(imageId, tagRow.id);
+    }
+};

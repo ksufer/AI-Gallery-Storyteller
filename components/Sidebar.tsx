@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { GalleryImage, FilterState } from '../types';
-import { TagIcon, HeartIcon, MagnifyingGlassIcon } from './Icons';
+import { TagIcon, HeartIcon, MagnifyingGlassIcon, CalendarIcon } from './Icons';
 
 interface SidebarProps {
   images: GalleryImage[];
@@ -10,10 +10,27 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange }) => {
   const [tagSearch, setTagSearch] = useState('');
+  const [folders, setFolders] = useState<string[]>([]);
+  const [folderCounts, setFolderCounts] = useState<{ [key: string]: number }>({});
 
-  // Aggregate data for filters
-  const allCheckpoints = Array.from(new Set(images.flatMap(img => img.metadata.checkpoints)));
-  const allLoras = Array.from(new Set(images.flatMap(img => img.metadata.loras)));
+  // Fetch folders on mount
+  useEffect(() => {
+    fetchFolders();
+  }, []);
+
+  const fetchFolders = async () => {
+    try {
+      const response = await fetch('/api/folders');
+      const result = await response.json();
+      
+      if (result.success) {
+        setFolders(result.folders || []);
+        setFolderCounts(result.counts || {});
+      }
+    } catch (error) {
+      console.error('Failed to fetch folders:', error);
+    }
+  };
 
   // Extract Tags from Prompts
   const allTags = useMemo(() => {
@@ -120,38 +137,25 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
            </div>
         </div>
 
-        {/* Checkpoints Section */}
+        {/* Folders Section */}
         <div>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">模型</h3>
-          <div className="space-y-1">
-            {allCheckpoints.map(ckpt => (
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2 flex justify-between items-center">
+            按日期浏览
+            <span className="text-[10px] text-gray-600">{folders.length}</span>
+          </h3>
+          <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+            {folders.map(folder => (
               <NavItem 
-                key={ckpt}
-                active={currentFilter.type === 'checkpoint' && currentFilter.value === ckpt}
-                onClick={() => onFilterChange({ type: 'checkpoint', value: ckpt })}
-                label={ckpt}
-                icon={<TagIcon className="w-3 h-3 text-cyan-500" />}
+                key={folder}
+                active={currentFilter.type === 'folder' && currentFilter.value === folder}
+                onClick={() => onFilterChange({ type: 'folder', value: folder })}
+                label={folder}
+                icon={<CalendarIcon className="w-3 h-3 text-green-500" />}
+                count={folderCounts[folder]}
               />
             ))}
-            {allCheckpoints.length === 0 && <span className="text-xs text-gray-700 px-2">暂无模型</span>}
+            {folders.length === 0 && <span className="text-xs text-gray-700 px-2">暂无日期文件夹</span>}
           </div>
-        </div>
-
-        {/* Loras Section */}
-        <div>
-           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-2">LoRA</h3>
-           <div className="space-y-1">
-            {allLoras.map(lora => (
-              <NavItem 
-                key={lora}
-                active={currentFilter.type === 'lora' && currentFilter.value === lora}
-                onClick={() => onFilterChange({ type: 'lora', value: lora })}
-                label={lora}
-                icon={<TagIcon className="w-3 h-3 text-purple-500" />}
-              />
-            ))}
-             {allLoras.length === 0 && <span className="text-xs text-gray-700 px-2">暂无 LoRA</span>}
-           </div>
         </div>
 
       </div>
