@@ -63,14 +63,37 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
       }
     });
 
+    // 1. 尝试获取文本
     if (response.text) {
       // @ts-ignore
-      return typeof response.text === 'function' ? response.text() : response.text;
+      const text = typeof response.text === 'function' ? response.text() : response.text;
+      if (text) return text;
     }
     
-    return "生成失败，未能生成故事。";
-  } catch (error) {
+    // 2. 检查 candidates 的中断原因 (Safety, Recitation, etc.)
+    const candidate = response.candidates?.[0];
+    if (candidate) {
+      if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+        return `[生成被拦截] 原因: ${candidate.finishReason}。这通常是因为内容触发了安全过滤器。`;
+      }
+      // 检查安全评级
+      if (candidate.safetyRatings) {
+        const blocked = candidate.safetyRatings.find(r => r.probability === 'HIGH' || r.probability === 'MEDIUM');
+        if (blocked) {
+           return `[安全拦截] 内容被标记为敏感: ${blocked.category} (${blocked.probability})`;
+        }
+      }
+    }
+
+    // 3. 检查 promptFeedback
+    if (response.promptFeedback && response.promptFeedback.blockReason) {
+       return `[提示词拦截] 原因: ${response.promptFeedback.blockReason}`;
+    }
+    
+    return "生成失败，未能生成故事 (API 返回空内容)。";
+  } catch (error: any) {
     console.error("Gemini API Error:", error);
-    throw new Error("通过 Gemini 生成故事失败。");
+    // 返回具体错误信息给前端展示
+    throw new Error(error.message || "通过 Gemini 生成故事失败。");
   }
 };

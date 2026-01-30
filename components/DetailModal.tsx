@@ -55,9 +55,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
       const newStory = await generateStoryFromPrompts(image.metadata.prompts, imageData);
       setStory(newStory);
       onUpdateStory(image.id, newStory);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      // Ideally show a toast notification here
+      // Show error in the text area so user knows what happened
+      setStory(`[生成出错] ${e.message || "未知错误，请重试。"}`);
     } finally {
       setIsGenerating(false);
     }
