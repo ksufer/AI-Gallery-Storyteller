@@ -8,16 +8,18 @@ const __dirname = path.dirname(__filename);
 
 // Load blocked tags configuration
 let BLOCKED_TAGS: Set<string> = new Set();
-const loadBlockedTags = () => {
+export const loadBlockedTags = () => {
     try {
         const configPath = path.resolve(__dirname, '../config/blocked-tags.json');
         const content = fs.readFileSync(configPath, 'utf-8');
         const tags = JSON.parse(content) as string[];
         BLOCKED_TAGS = new Set(tags.map(t => t.toLowerCase()));
         console.log(`✓ Loaded ${BLOCKED_TAGS.size} blocked tags`);
+        return true;
     } catch (error) {
         console.warn('⚠ Could not load blocked-tags.json, using empty blocklist');
         BLOCKED_TAGS = new Set();
+        return false;
     }
 };
 

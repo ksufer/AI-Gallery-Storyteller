@@ -9,15 +9,23 @@ interface ForbiddenWords {
   [key: string]: string;
 }
 
+type TabType = 'forbidden-words' | 'blocked-tags';
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
+  const [activeTab, setActiveTab] = useState<TabType>('forbidden-words');
   const [words, setWords] = useState<ForbiddenWords>({});
+  const [blockedTags, setBlockedTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    fetchSettings();
-  }, []);
+    if (activeTab === 'forbidden-words') {
+      fetchForbiddenWords();
+    } else {
+      fetchBlockedTags();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -27,7 +35,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
-  const fetchSettings = async () => {
+  const fetchForbiddenWords = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch('/api/settings/forbidden-words');
       const result = await response.json();
@@ -38,7 +47,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         setMessage({ text: `加载失败: ${result.error}`, type: 'error' });
       }
     } catch (error: any) {
-      console.error('Failed to fetch settings:', error);
+      console.error('Failed to fetch forbidden words:', error);
+      setMessage({ text: `加载失败: ${error.message}`, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchBlockedTags = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/settings/blocked-tags');
+      const result = await response.json();
+      
+      if (result.success) {
+        setBlockedTags(result.data || []);
+      } else {
+        setMessage({ text: `加载失败: ${result.error}`, type: 'error' });
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch blocked tags:', error);
       setMessage({ text: `加载失败: ${error.message}`, type: 'error' });
     } finally {
       setIsLoading(false);
@@ -50,19 +78,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setMessage(null);
 
     try {
-      const response = await fetch('/api/settings/forbidden-words', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(words)
-      });
+      if (activeTab === 'forbidden-words') {
+        const response = await fetch('/api/settings/forbidden-words', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(words)
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (result.success) {
-        setMessage({ text: '设置已保存！重新生成故事时将应用新规则。', type: 'success' });
-        setTimeout(() => setMessage(null), 3000);
+        if (result.success) {
+          setMessage({ text: '设置已保存！重新生成故事时将应用新规则。', type: 'success' });
+          setTimeout(() => setMessage(null), 3000);
+        } else {
+          setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
+        }
       } else {
-        setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
+        const response = await fetch('/api/settings/blocked-tags', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(blockedTags)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setMessage({ text: '设置已保存！新导入的图片将应用屏蔽规则。', type: 'success' });
+          setTimeout(() => setMessage(null), 3000);
+        } else {
+          setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
+        }
       }
     } catch (error: any) {
       console.error('Failed to save settings:', error);
@@ -94,6 +139,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setWords(newWords);
   };
 
+  const handleAddTag = () => {
+    setBlockedTags([...blockedTags, '']);
+  };
+
+  const handleUpdateTag = (index: number, value: string) => {
+    const newTags = [...blockedTags];
+    newTags[index] = value;
+    setBlockedTags(newTags);
+  };
+
+  const handleDeleteTag = (index: number) => {
+    setBlockedTags(blockedTags.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -106,17 +165,43 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       <div className="relative flex flex-col w-full max-w-4xl h-full max-h-[90vh] glass-panel rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
         
         {/* Header */}
-        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-[#18181b]/95 backdrop-blur">
-          <div>
-            <h3 className="text-xl font-semibold text-white">设置</h3>
-            <p className="text-sm text-gray-500 mt-1">配置禁词替换表</p>
+        <div className="border-b border-white/5 bg-[#18181b]/95 backdrop-blur">
+          <div className="p-6 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold text-white">设置</h3>
+              <p className="text-sm text-gray-500 mt-1">管理应用配置</p>
+            </div>
+            <button 
+              onClick={onClose} 
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
           </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/10"
-          >
-            <XMarkIcon className="w-5 h-5" />
-          </button>
+          
+          {/* Tabs */}
+          <div className="flex gap-1 px-6">
+            <button
+              onClick={() => setActiveTab('forbidden-words')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'forbidden-words'
+                  ? 'bg-[#18181b] text-white border-t-2 border-cyan-500'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              禁词替换表
+            </button>
+            <button
+              onClick={() => setActiveTab('blocked-tags')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'blocked-tags'
+                  ? 'bg-[#18181b] text-white border-t-2 border-purple-500'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              标签屏蔽列表
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -126,13 +211,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <div className="flex justify-center items-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
             </div>
-          ) : (
+          ) : activeTab === 'forbidden-words' ? (
             <div className="space-y-4">
               
               {/* Info Box */}
               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                 <p className="text-sm text-blue-400">
                   配置禁词替换表，在生成故事前自动替换提示词中的敏感词汇。例如："少女" → "美女"
+                </p>
+                <p className="text-xs text-blue-400/70 mt-2">
+                  💡 修改后保存即可生效，无需重启服务器（刷新页面即可）
                 </p>
               </div>
 
@@ -171,6 +259,58 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               >
                 <PlusIcon className="w-5 h-5" />
                 添加规则
+              </button>
+
+            </div>
+          ) : (
+            <div className="space-y-4">
+              
+              {/* Info Box */}
+              <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                <p className="text-sm text-purple-400">
+                  配置标签屏蔽列表，在从图片元数据提取标签时自动过滤无意义的标签（如图像质量词、镜头词等）
+                </p>
+                <p className="text-xs text-purple-400/70 mt-2">
+                  💡 修改后保存即可生效，无需重启服务器。仅对新导入的图片有效
+                </p>
+              </div>
+
+              {/* Tags List */}
+              {blockedTags.length === 0 ? (
+                <div className="text-center py-12 text-gray-600">
+                  <p className="text-lg mb-2">暂无屏蔽标签</p>
+                  <p className="text-sm">点击下方"添加标签"按钮开始配置</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {blockedTags.map((tag, index) => (
+                    <div key={index} className="flex gap-3 items-center p-3 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
+                      <input
+                        type="text"
+                        value={tag}
+                        onChange={(e) => handleUpdateTag(index, e.target.value)}
+                        className="flex-1 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50"
+                        placeholder="标签名称（如：masterpiece）"
+                      />
+                      <button
+                        onClick={() => handleDeleteTag(index)}
+                        className="p-2 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                        title="删除"
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Button */}
+              <button
+                onClick={handleAddTag}
+                className="w-full p-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/50 rounded-lg transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-purple-400"
+              >
+                <PlusIcon className="w-5 h-5" />
+                添加标签
               </button>
 
             </div>

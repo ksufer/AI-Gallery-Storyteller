@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getImagesByTag, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags } from './db.ts';
+import { getImages, getImagesByTag, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
@@ -306,6 +306,86 @@ app.put('/api/settings/forbidden-words', async (req, res) => {
     } catch (error: any) {
         console.error("Update Settings API Error:", error);
         res.status(500).json({ success: false, error: error.message || "Failed to update settings" });
+    }
+});
+
+// Get blocked tags settings
+app.get('/api/settings/blocked-tags', async (req, res) => {
+    try {
+        const configPath = path.join(CONFIG_DIR, 'blocked-tags.json');
+        
+        try {
+            const content = await fs.readFile(configPath, 'utf-8');
+            const tags = JSON.parse(content);
+            res.json({ success: true, data: tags });
+        } catch (error: any) {
+            // If file doesn't exist, return empty array
+            if (error.code === 'ENOENT') {
+                res.json({ success: true, data: [] });
+            } else {
+                throw error;
+            }
+        }
+    } catch (error: any) {
+        console.error("Get Blocked Tags API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to read blocked tags" });
+    }
+});
+
+// Update blocked tags settings
+app.put('/api/settings/blocked-tags', async (req, res) => {
+    try {
+        const tags = req.body;
+        
+        // Validate that it's an array
+        if (!Array.isArray(tags)) {
+            return res.status(400).json({ success: false, error: "Invalid format: must be an array" });
+        }
+        
+        // Validate all items are strings
+        for (const tag of tags) {
+            if (typeof tag !== 'string') {
+                return res.status(400).json({ success: false, error: "All items must be strings" });
+            }
+        }
+        
+        const configPath = path.join(CONFIG_DIR, 'blocked-tags.json');
+        
+        // Ensure config directory exists
+        try {
+            await fs.access(CONFIG_DIR);
+        } catch {
+            await fs.mkdir(CONFIG_DIR, { recursive: true });
+        }
+        
+        // Write to file with pretty formatting
+        await fs.writeFile(configPath, JSON.stringify(tags, null, 2), 'utf-8');
+        
+        // Reload blocked tags in memory
+        const reloaded = loadBlockedTags();
+        
+        res.json({ 
+            success: true, 
+            message: "Blocked tags updated successfully",
+            reloaded 
+        });
+    } catch (error: any) {
+        console.error("Update Blocked Tags API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to update blocked tags" });
+    }
+});
+
+// Reload blocked tags configuration
+app.post('/api/settings/blocked-tags/reload', (req, res) => {
+    try {
+        const success = loadBlockedTags();
+        res.json({ 
+            success, 
+            message: success ? "Blocked tags reloaded successfully" : "Failed to reload blocked tags" 
+        });
+    } catch (error: any) {
+        console.error("Reload Blocked Tags API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to reload blocked tags" });
     }
 });
 
