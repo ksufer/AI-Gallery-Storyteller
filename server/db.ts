@@ -166,6 +166,16 @@ export const getImages = () => {
     return db.prepare('SELECT * FROM images ORDER BY date_added DESC').all();
 };
 
+export const getImagesByTag = (tagName: string) => {
+    return db.prepare(`
+        SELECT DISTINCT i.* FROM images i
+        JOIN image_tags it ON i.id = it.image_id
+        JOIN tags t ON it.tag_id = t.id
+        WHERE t.name = ?
+        ORDER BY i.date_added DESC
+    `).all(tagName);
+};
+
 export const getImageTags = (imageId: string) => {
     return db.prepare(`
         SELECT t.name FROM tags t

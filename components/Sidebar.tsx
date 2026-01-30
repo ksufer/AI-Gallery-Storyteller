@@ -16,12 +16,12 @@ const Sidebar: React.FC<SidebarProps> = ({ images, currentFilter, onFilterChange
   const [autoTags, setAutoTags] = useState<Array<{ name: string, count: number }>>([]);
   const [userTags, setUserTags] = useState<Array<{ name: string, count: number }>>([]);
 
-  // Fetch folders and tags on mount
+  // Fetch folders and tags on mount and when images change
   useEffect(() => {
     fetchFolders();
     fetchAutoTags();
     fetchUserTags();
-  }, []);
+  }, [images.length]); // Refetch when number of images changes
 
   // Refetch tags when search changes
   useEffect(() => {

@@ -8,7 +8,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags } from './db.ts';
+import { getImages, getImagesByTag, getTagsWithCount, upsertImage, updateImageStory, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
@@ -61,10 +61,18 @@ app.get('/api/images', async (req, res) => {
         const limit = parseInt(req.query.limit as string) || 20;
         const offset = (page - 1) * limit;
         
-        // Get all rows first (we'll implement DB-level pagination later if needed)
-        const allRows = getImages() as any[];
+        // Get all rows based on filters
+        let allRows: any[];
         
-        // Apply filtering
+        // Filter by tag (from database)
+        if (req.query.tag) {
+            const tagName = req.query.tag as string;
+            allRows = getImagesByTag(tagName) as any[];
+        } else {
+            allRows = getImages() as any[];
+        }
+        
+        // Apply additional filtering
         let filteredRows = allRows;
         
         // Filter by folder

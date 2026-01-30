@@ -41,6 +41,9 @@ function App() {
       if (filter.type === 'folder' && filter.value) {
         queryParams += `&folder=${encodeURIComponent(filter.value)}`;
       }
+      if (filter.type === 'tag' && filter.value) {
+        queryParams += `&tag=${encodeURIComponent(filter.value)}`;
+      }
 
       const response = await fetch(`/api/images?${queryParams}`);
       const data = await response.json();
@@ -97,17 +100,15 @@ function App() {
     fetchImages(1, false);
   }, [filter]);
 
-  // Filter Logic
+  // Filter Logic (only for client-side filters)
   const filteredImages = useMemo(() => {
     return images.filter(img => {
+      // Tag and folder filters are handled by the API, so no need to filter again
+      if (filter.type === 'tag' || filter.type === 'folder') return true;
+      
       if (filter.type === 'favorite') return img.isFavorite;
       if (filter.type === 'checkpoint' && filter.value) return img.metadata.checkpoints.includes(filter.value);
       if (filter.type === 'lora' && filter.value) return img.metadata.loras.includes(filter.value);
-      if (filter.type === 'tag' && filter.value) {
-        // Extract tags from prompts on the fly or pre-process them
-        const tags = img.metadata.prompts.flatMap(p => p.split(',').map(s => s.trim()).filter(s => s.length > 0 && s.length < 50));
-        return tags.includes(filter.value);
-      }
       return true;
     });
   }, [images, filter]);
