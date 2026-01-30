@@ -52,12 +52,16 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
 
   try {
     // 过滤掉年龄相关的提示词，以避免触发安全过滤器 (如 "16yo", "18 year old")
-    // 使用更严格的正则匹配，避免误伤
-    const safePrompts = prompts.filter(p => {
-        const lower = p.toLowerCase().trim();
-        // 匹配 "16yo", "18 yo", "20 year old", "10 years old" 等格式
-        const isAgeTag = /^\d+\s*(yo|year\s*old|years\s*old)$/.test(lower);
-        return !isAgeTag;
+    // 使用 map + replace 确保即使在长字符串中也能移除年龄标签
+    const safePrompts = prompts.map(p => {
+        // 使用正则替换掉字符串内部的年龄标签
+        // 匹配模式：数字 + 可能的空格 + (yo|year old|years old)
+        // 使用 \b 确保是单词边界
+        let cleaned = p.replace(/\b\d+\s*(yo|year\s*old|years\s*old)\b/gi, '');
+        
+        // 清理可能因替换产生的多余逗号和空格
+        cleaned = cleaned.replace(/,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
+        return cleaned;
     });
 
     // 简化 promptText，因为主要指令已经在 SYSTEM_INSTRUCTION 中定义
