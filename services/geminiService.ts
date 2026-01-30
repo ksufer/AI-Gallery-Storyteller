@@ -69,10 +69,17 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
     
     // Debug Log: 打印实际发送的内容
     console.log("=== Gemini Request Debug ===");
+    console.log("Model:", 'gemini-3-flash-preview');
+    console.log("--- System Instruction ---");
+    console.log(SYSTEM_INSTRUCTION);
+    console.log("--------------------------");
     console.log("Safe Prompts:", safePrompts);
-    console.log("System Instruction Length:", SYSTEM_INSTRUCTION.length);
-    console.log("Has Image:", !!image);
     console.log("Prompt Text:", promptText);
+    console.log("Has Image:", !!image);
+    if (image) {
+        console.log("Image MimeType:", image.mimeType);
+        console.log("Image Data Length:", image.data.length);
+    }
     console.log("============================");
 
     let contents: any = promptText;
