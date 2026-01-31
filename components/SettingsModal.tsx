@@ -231,24 +231,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <p className="text-sm">点击下方"添加规则"按钮开始配置</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-0">
                   {/* Table Header */}
-                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-2 py-1.5 bg-white/5 rounded-lg">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-4 py-2 bg-white/5 rounded-t-lg border-b border-white/5">
                     <div className="text-xs font-semibold text-gray-500 uppercase">原词</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase">替换词</div>
-                    <div className="w-10"></div>
+                    <div className="w-8"></div>
                   </div>
 
                   {/* Table Rows */}
-                  {Object.entries(words).map(([key, value], index) => (
-                    <WordRow
-                      key={`${key}-${index}`}
-                      originalKey={key}
-                      value={value}
-                      onUpdate={handleUpdateWord}
-                      onDelete={handleDeleteWord}
-                    />
-                  ))}
+                  <div className="divide-y divide-white/5 border border-white/5 rounded-lg overflow-hidden">
+                    {Object.entries(words).map(([key, value], index) => (
+                      <WordRow
+                        key={`${key}-${index}`}
+                        originalKey={key}
+                        value={value}
+                        onUpdate={handleUpdateWord}
+                        onDelete={handleDeleteWord}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -282,22 +284,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   <p className="text-sm">点击下方"添加标签"按钮开始配置</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="divide-y divide-white/5 border border-white/5 rounded-lg overflow-hidden">
                   {blockedTags.map((tag, index) => (
-                    <div key={index} className="flex gap-2 items-center p-2 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
+                    <div key={index} className="flex gap-2 items-center px-2 py-1 bg-black/20 hover:bg-black/40 transition-colors group">
                       <input
                         type="text"
                         value={tag}
                         onChange={(e) => handleUpdateTag(index, e.target.value)}
-                        className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50"
+                        className="flex-1 bg-transparent border-none px-2 py-1 text-sm text-gray-300 focus:outline-none focus:text-white placeholder-gray-600"
                         placeholder="标签名称（如：masterpiece）"
                       />
                       <button
                         onClick={() => handleDeleteTag(index)}
-                        className="p-2 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+                        className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                         title="删除"
                       >
-                        <TrashIcon className="w-5 h-5" />
+                        <TrashIcon className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
@@ -377,13 +379,13 @@ const WordRow: React.FC<WordRowProps> = ({ originalKey, value, onUpdate, onDelet
   };
 
   return (
-    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 p-2 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
+    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-2 py-1 bg-black/20 hover:bg-black/40 transition-colors group items-center">
       <input
         type="text"
         value={key}
         onChange={(e) => setKey(e.target.value)}
         onBlur={handleKeyBlur}
-        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
+        className="bg-transparent border-none px-2 py-1 text-sm text-gray-300 focus:outline-none focus:text-white placeholder-gray-600"
         placeholder="原词"
       />
       <input
@@ -391,15 +393,15 @@ const WordRow: React.FC<WordRowProps> = ({ originalKey, value, onUpdate, onDelet
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onBlur={handleValueBlur}
-        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
+        className="bg-transparent border-none px-2 py-1 text-sm text-gray-300 focus:outline-none focus:text-white placeholder-gray-600"
         placeholder="替换词"
       />
       <button
         onClick={() => onDelete(originalKey)}
-        className="p-2 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
+        className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
         title="删除"
       >
-        <TrashIcon className="w-5 h-5" />
+        <TrashIcon className="w-4 h-4" />
       </button>
     </div>
   );
