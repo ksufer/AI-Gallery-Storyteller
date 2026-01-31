@@ -216,11 +216,16 @@ export const getImagesByTag = (tagName: string) => {
 };
 
 export const getImageTags = (imageId: string) => {
-    return db.prepare(`
+    const tags = db.prepare(`
         SELECT t.name FROM tags t
         JOIN image_tags it ON t.id = it.tag_id
         WHERE it.image_id = ?
     `).all(imageId).map((row: any) => row.name);
+
+    // Filter out blocked tags at read time as well
+    return tags.filter((tagName: string) => 
+        !BLOCKED_PATTERNS.some(pattern => pattern.test(tagName))
+    );
 };
 
 export const getTagsWithCount = (search?: string, source?: 'auto' | 'user') => {
@@ -249,7 +254,12 @@ export const getTagsWithCount = (search?: string, source?: 'auto' | 'user') => {
     
     query += ` GROUP BY t.id ORDER BY count DESC`;
     
-    return db.prepare(query).all(...params);
+    const results = db.prepare(query).all(...params) as { name: string; count: number }[];
+
+    // Filter out blocked tags from the results
+    return results.filter(row => 
+        !BLOCKED_PATTERNS.some(pattern => pattern.test(row.name))
+    );
 };
 
 export const getImageByPath = (filePath: string) => {
