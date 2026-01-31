@@ -1,4 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
+import nodeFetch from 'node-fetch';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+
+// Patch global fetch for proxy support if HTTPS_PROXY is set
+if (process.env.HTTPS_PROXY) {
+    console.log(`Using proxy: ${process.env.HTTPS_PROXY}`);
+    const agent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
+    
+    // @ts-ignore
+    global.fetch = (url, init) => {
+        // @ts-ignore
+        return nodeFetch(url, { ...init, agent });
+    };
+}
 
 // Initialize Gemini Client
 // We use lazy initialization to allow the server to start even if API_KEY is missing.
