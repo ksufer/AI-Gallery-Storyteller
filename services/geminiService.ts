@@ -4,13 +4,18 @@ import { GoogleGenAI } from "@google/genai";
 // We use lazy initialization to allow the server to start even if API_KEY is missing.
 let ai: GoogleGenAI | null = null;
 
+const getApiKey = () => {
+    return process.env.GEMINI_API_KEY || process.env.API_KEY;
+};
+
 const getAiClient = () => {
   if (!ai) {
-    if (!process.env.API_KEY) {
+    const apiKey = getApiKey();
+    if (!apiKey) {
       // Should acturally be handled by the caller, but just in case
       throw new Error("未设置 API 密钥");
     }
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    ai = new GoogleGenAI({ apiKey });
   }
   return ai;
 };
@@ -119,8 +124,9 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export const generateStoryFromPrompts = async (prompts: string[], image?: ImageInput): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("未设置 API 密钥，请配置 process.env.API_KEY 或 .env.local 中的 GEMINI_API_KEY");
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("未设置 API 密钥，请配置 process.env.GEMINI_API_KEY 或 .env.local 中的 GEMINI_API_KEY");
   }
 
   try {
