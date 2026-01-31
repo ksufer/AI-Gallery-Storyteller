@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import DetailModal from './components/DetailModal';
 import SettingsModal from './components/SettingsModal';
 import VirtualMasonryGallery from './components/VirtualMasonryGallery';
+import BatchActionBar from './components/BatchActionBar';
 import { GalleryImage, FilterState, PaginatedResponse } from './types';
 import { MOCK_IMAGES } from './constants';
 import { SparklesIcon, CogIcon } from './components/Icons';
@@ -29,6 +30,10 @@ function App() {
   
   // Trigger for sidebar refresh
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  
+  // Batch operation state
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
 
   // Fetch images from backend with pagination
   const fetchImages = async (pageNum: number = 1, append: boolean = false) => {
@@ -173,6 +178,188 @@ function App() {
   const handleTagsChanged = () => {
     // Trigger sidebar refresh when tags are added or removed
     setSidebarRefreshKey(prev => prev + 1);
+  };
+
+  // Batch operation handlers
+  const toggleBatchMode = () => {
+    setBatchMode(prev => !prev);
+    setSelectedImageIds(new Set()); // Clear selection when toggling
+  };
+
+  const toggleImageSelection = (id: string) => {
+    setSelectedImageIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedImageIds(new Set(filteredImages.map(img => img.id)));
+  };
+
+  const clearSelection = () => {
+    setSelectedImageIds(new Set());
+  };
+
+  const handleBatchDelete = async (imageIds: string[]) => {
+    try {
+      const response = await fetch('/api/batch/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageIds })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Remove deleted images from local state
+        setImages(prev => prev.filter(img => !imageIds.includes(img.id)));
+        setTotalImages(prev => prev - result.succeeded);
+        setSelectedImageIds(new Set());
+        
+        setUploadStatus({
+          message: `成功删除 ${result.succeeded} 张图片${result.failed > 0 ? `, ${result.failed} 张失败` : ''}`,
+          type: result.failed > 0 ? 'error' : 'success'
+        });
+      } else {
+        setUploadStatus({
+          message: result.error || '批量删除失败',
+          type: 'error'
+        });
+      }
+      
+      setTimeout(() => setUploadStatus(null), 3000);
+    } catch (error: any) {
+      console.error('Batch delete error:', error);
+      setUploadStatus({
+        message: error.message || '批量删除失败',
+        type: 'error'
+      });
+      setTimeout(() => setUploadStatus(null), 3000);
+    }
+  };
+
+  const handleBatchFavorite = async (imageIds: string[], isFavorite: boolean) => {
+    try {
+      const response = await fetch('/api/batch/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageIds, isFavorite })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Update local state
+        setImages(prev => prev.map(img => 
+          imageIds.includes(img.id) ? { ...img, isFavorite } : img
+        ));
+        setSelectedImageIds(new Set());
+        setSidebarRefreshKey(prev => prev + 1);
+        
+        setUploadStatus({
+          message: `成功${isFavorite ? '收藏' : '取消收藏'} ${result.succeeded} 张图片${result.failed > 0 ? `, ${result.failed} 张失败` : ''}`,
+          type: result.failed > 0 ? 'error' : 'success'
+        });
+      } else {
+        setUploadStatus({
+          message: result.error || '批量操作失败',
+          type: 'error'
+        });
+      }
+      
+      setTimeout(() => setUploadStatus(null), 3000);
+    } catch (error: any) {
+      console.error('Batch favorite error:', error);
+      setUploadStatus({
+        message: error.message || '批量操作失败',
+        type: 'error'
+      });
+      setTimeout(() => setUploadStatus(null), 3000);
+    }
+  };
+
+  const handleBatchAddTag = async (imageIds: string[], tagName: string) => {
+    try {
+      const response = await fetch('/api/batch/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageIds, tagName })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setSelectedImageIds(new Set());
+        setSidebarRefreshKey(prev => prev + 1);
+        
+        setUploadStatus({
+          message: `成功为 ${result.succeeded} 张图片添加标签${result.failed > 0 ? `, ${result.failed} 张失败` : ''}`,
+          type: result.failed > 0 ? 'error' : 'success'
+        });
+      } else {
+        setUploadStatus({
+          message: result.error || '批量添加标签失败',
+          type: 'error'
+        });
+      }
+      
+      setTimeout(() => setUploadStatus(null), 3000);
+    } catch (error: any) {
+      console.error('Batch add tag error:', error);
+      setUploadStatus({
+        message: error.message || '批量添加标签失败',
+        type: 'error'
+      });
+      setTimeout(() => setUploadStatus(null), 3000);
+    }
+  };
+
+  const handleBatchGenerateStories = async (imageIds: string[]) => {
+    try {
+      setUploadStatus({
+        message: `正在为 ${imageIds.length} 张图片生成故事...`,
+        type: 'success'
+      });
+
+      const response = await fetch('/api/batch/stories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageIds })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Refresh images to get updated stories
+        await fetchImages(page, false);
+        setSelectedImageIds(new Set());
+        
+        setUploadStatus({
+          message: `成功生成 ${result.succeeded} 个故事${result.failed > 0 ? `, ${result.failed} 个失败` : ''}`,
+          type: result.failed > 0 ? 'error' : 'success'
+        });
+      } else {
+        setUploadStatus({
+          message: result.error || '批量生成故事失败',
+          type: 'error'
+        });
+      }
+      
+      setTimeout(() => setUploadStatus(null), 5000);
+    } catch (error: any) {
+      console.error('Batch generate stories error:', error);
+      setUploadStatus({
+        message: error.message || '批量生成故事失败',
+        type: 'error'
+      });
+      setTimeout(() => setUploadStatus(null), 3000);
+    }
   };
 
   // Upload files (extracted logic for reuse)
@@ -359,6 +546,19 @@ function App() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={toggleBatchMode}
+              className={`p-2.5 rounded-xl transition-all border ${
+                batchMode
+                  ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-400'
+                  : 'bg-white/5 hover:bg-white/10 border-transparent hover:border-white/10 text-gray-400 hover:text-white'
+              }`}
+              title={batchMode ? '退出批量模式' : '批量操作'}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
               className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all border border-transparent hover:border-white/10"
               title="设置"
@@ -429,14 +629,33 @@ function App() {
           ) : (
             <VirtualMasonryGallery
               images={filteredImages}
-              onImageClick={setSelectedImageId}
+              onImageClick={batchMode ? () => {} : setSelectedImageId}
               onLoadMore={loadMore}
               hasMore={hasMore}
               isLoading={isLoadingMore}
+              batchMode={batchMode}
+              selectedImageIds={selectedImageIds}
+              onToggleSelect={toggleImageSelection}
             />
           )}
         </div>
       </main>
+
+      {/* Batch Action Bar */}
+      {batchMode && (
+        <BatchActionBar
+          selectedCount={selectedImageIds.size}
+          totalCount={filteredImages.length}
+          onSelectAll={selectAll}
+          onClearSelection={clearSelection}
+          onDelete={handleBatchDelete}
+          onFavorite={handleBatchFavorite}
+          onAddTag={handleBatchAddTag}
+          onGenerateStories={handleBatchGenerateStories}
+          onExitBatchMode={toggleBatchMode}
+          selectedImageIds={Array.from(selectedImageIds)}
+        />
+      )}
 
       {/* Detail Modal */}
       {selectedImage && (

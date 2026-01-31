@@ -51,3 +51,32 @@ export interface ImageQueryParams {
   lora?: string;
   tag?: string;
 }
+
+// Batch operation types
+export type BatchActionType = 'delete' | 'favorite' | 'unfavorite' | 'addTag' | 'generateStory';
+
+export interface BatchOperationResult {
+  success: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  errors?: Array<{ imageId: string; error: string }>;
+}
+
+export interface BatchDeleteRequest {
+  imageIds: string[];
+}
+
+export interface BatchFavoriteRequest {
+  imageIds: string[];
+  isFavorite: boolean;
+}
+
+export interface BatchTagRequest {
+  imageIds: string[];
+  tagName: string;
+}
+
+export interface BatchStoryRequest {
+  imageIds: string[];
+}

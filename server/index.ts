@@ -279,6 +279,209 @@ app.delete('/api/images/:id/tags/:tagName', async (req, res) => {
     }
 });
 
+// ============================================
+// Batch Operations API
+// ============================================
+
+// Batch delete images
+app.post('/api/batch/delete', async (req, res) => {
+    try {
+        const { imageIds } = req.body;
+        
+        if (!Array.isArray(imageIds) || imageIds.length === 0) {
+            return res.status(400).json({ success: false, error: "imageIds must be a non-empty array" });
+        }
+        
+        const results = await Promise.allSettled(
+            imageIds.map(async (id) => {
+                const image = getImageById(id) as any;
+                if (!image) {
+                    throw new Error(`Image not found: ${id}`);
+                }
+                
+                // Delete physical file
+                try {
+                    await fs.unlink(image.file_path);
+                } catch (fileError: any) {
+                    console.warn(`Failed to delete file ${image.file_path}:`, fileError);
+                }
+                
+                // Delete from database
+                deleteImage(id);
+                return id;
+            })
+        );
+        
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const errors = results
+            .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+            .map((r, index) => ({ imageId: imageIds[index], error: r.reason.message }));
+        
+        res.json({
+            success: succeeded > 0,
+            total: imageIds.length,
+            succeeded,
+            failed,
+            errors: errors.length > 0 ? errors : undefined
+        });
+    } catch (error: any) {
+        console.error("Batch Delete API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to batch delete images" });
+    }
+});
+
+// Batch update favorite status
+app.post('/api/batch/favorite', async (req, res) => {
+    try {
+        const { imageIds, isFavorite } = req.body;
+        
+        if (!Array.isArray(imageIds) || imageIds.length === 0) {
+            return res.status(400).json({ success: false, error: "imageIds must be a non-empty array" });
+        }
+        
+        if (typeof isFavorite !== 'boolean') {
+            return res.status(400).json({ success: false, error: "isFavorite must be a boolean" });
+        }
+        
+        const results = await Promise.allSettled(
+            imageIds.map(async (id) => {
+                const image = getImageById(id);
+                if (!image) {
+                    throw new Error(`Image not found: ${id}`);
+                }
+                updateImageFavorite(id, isFavorite);
+                return id;
+            })
+        );
+        
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const errors = results
+            .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+            .map((r, index) => ({ imageId: imageIds[index], error: r.reason.message }));
+        
+        res.json({
+            success: succeeded > 0,
+            total: imageIds.length,
+            succeeded,
+            failed,
+            errors: errors.length > 0 ? errors : undefined
+        });
+    } catch (error: any) {
+        console.error("Batch Favorite API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to batch update favorite status" });
+    }
+});
+
+// Batch add tag to images
+app.post('/api/batch/tags', async (req, res) => {
+    try {
+        const { imageIds, tagName } = req.body;
+        
+        if (!Array.isArray(imageIds) || imageIds.length === 0) {
+            return res.status(400).json({ success: false, error: "imageIds must be a non-empty array" });
+        }
+        
+        if (!tagName || typeof tagName !== 'string' || tagName.trim().length === 0) {
+            return res.status(400).json({ success: false, error: "Tag name is required" });
+        }
+        
+        const trimmedTag = tagName.trim();
+        if (trimmedTag.length > 50) {
+            return res.status(400).json({ success: false, error: "Tag name too long (max 50 characters)" });
+        }
+        
+        const results = await Promise.allSettled(
+            imageIds.map(async (id) => {
+                const image = getImageById(id);
+                if (!image) {
+                    throw new Error(`Image not found: ${id}`);
+                }
+                addTagToImage(id, trimmedTag);
+                return id;
+            })
+        );
+        
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        const errors = results
+            .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+            .map((r, index) => ({ imageId: imageIds[index], error: r.reason.message }));
+        
+        res.json({
+            success: succeeded > 0,
+            total: imageIds.length,
+            succeeded,
+            failed,
+            errors: errors.length > 0 ? errors : undefined
+        });
+    } catch (error: any) {
+        console.error("Batch Tags API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to batch add tags" });
+    }
+});
+
+// Batch generate stories
+app.post('/api/batch/stories', async (req, res) => {
+    try {
+        const { imageIds } = req.body;
+        
+        if (!Array.isArray(imageIds) || imageIds.length === 0) {
+            return res.status(400).json({ success: false, error: "imageIds must be a non-empty array" });
+        }
+        
+        // Import generateStoryFromPrompts
+        const { generateStoryFromPrompts } = await import('../services/geminiService.js');
+        
+        let succeeded = 0;
+        let failed = 0;
+        const errors: Array<{ imageId: string; error: string }> = [];
+        
+        // Process sequentially to avoid API rate limits
+        for (const id of imageIds) {
+            try {
+                const image = getImageById(id) as any;
+                if (!image) {
+                    throw new Error(`Image not found: ${id}`);
+                }
+                
+                const metadata = JSON.parse(image.meta_json);
+                const prompts = metadata.prompts || [];
+                
+                // Read image file and convert to base64
+                const imageBuffer = await fs.readFile(image.file_path);
+                const base64Image = imageBuffer.toString('base64');
+                const mimeType = image.file_path.endsWith('.png') ? 'image/png' : 
+                               image.file_path.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+                
+                const story = await generateStoryFromPrompts(prompts, {
+                    data: base64Image,
+                    mimeType
+                });
+                
+                updateImageStory(id, story);
+                succeeded++;
+            } catch (error: any) {
+                console.error(`Failed to generate story for ${id}:`, error);
+                errors.push({ imageId: id, error: error.message || 'Unknown error' });
+                failed++;
+            }
+        }
+        
+        res.json({
+            success: succeeded > 0,
+            total: imageIds.length,
+            succeeded,
+            failed,
+            errors: errors.length > 0 ? errors : undefined
+        });
+    } catch (error: any) {
+        console.error("Batch Stories API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to batch generate stories" });
+    }
+});
+
 // Get forbidden words settings
 app.get('/api/settings/forbidden-words', async (req, res) => {
     try {

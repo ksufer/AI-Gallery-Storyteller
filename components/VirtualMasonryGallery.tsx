@@ -10,6 +10,9 @@ interface VirtualMasonryGalleryProps {
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoading?: boolean;
+  batchMode?: boolean;
+  selectedImageIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 }
 
 interface ColumnGroup {
@@ -22,7 +25,10 @@ const VirtualMasonryGallery: React.FC<VirtualMasonryGalleryProps> = ({
   onImageClick,
   onLoadMore,
   hasMore = false,
-  isLoading = false
+  isLoading = false,
+  batchMode = false,
+  selectedImageIds = new Set(),
+  onToggleSelect
 }) => {
   const [columns, setColumns] = useState(4);
 
@@ -120,7 +126,13 @@ const VirtualMasonryGallery: React.FC<VirtualMasonryGalleryProps> = ({
         {row.map((image, columnIndex) => (
           <div key={`${rowIndex}-${columnIndex}`}>
             {image ? (
-              <ImageCard image={image} onClick={onImageClick} />
+              <ImageCard 
+                image={image} 
+                onClick={onImageClick}
+                batchMode={batchMode}
+                isSelected={selectedImageIds.has(image.id)}
+                onToggleSelect={onToggleSelect}
+              />
             ) : (
               // Empty placeholder to maintain grid structure
               <div />
