@@ -212,10 +212,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
             </div>
           ) : activeTab === 'forbidden-words' ? (
-            <div className="space-y-4">
+            <div className="space-y-2">
               
               {/* Info Box */}
-              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                 <p className="text-sm text-blue-400">
                   配置禁词替换表，在生成故事前自动替换提示词中的敏感词汇。例如："少女" → "美女"
                 </p>
@@ -233,7 +233,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               ) : (
                 <div className="space-y-3">
                   {/* Table Header */}
-                  <div className="grid grid-cols-[1fr_1fr_auto] gap-4 px-4 py-2 bg-white/5 rounded-lg">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 px-2 py-1.5 bg-white/5 rounded-lg">
                     <div className="text-xs font-semibold text-gray-500 uppercase">原词</div>
                     <div className="text-xs font-semibold text-gray-500 uppercase">替换词</div>
                     <div className="w-10"></div>
@@ -255,7 +255,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               {/* Add Button */}
               <button
                 onClick={handleAddWord}
-                className="w-full p-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 rounded-lg transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-cyan-400"
+                className="w-full p-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/50 rounded-lg transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-cyan-400"
               >
                 <PlusIcon className="w-5 h-5" />
                 添加规则
@@ -263,10 +263,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2">
               
               {/* Info Box */}
-              <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
                 <p className="text-sm text-purple-400">
                   配置标签屏蔽列表，在从图片元数据提取标签时自动过滤无意义的标签（如图像质量词、镜头词等）
                 </p>
@@ -284,12 +284,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               ) : (
                 <div className="space-y-2">
                   {blockedTags.map((tag, index) => (
-                    <div key={index} className="flex gap-3 items-center p-3 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
+                    <div key={index} className="flex gap-2 items-center p-2 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
                       <input
                         type="text"
                         value={tag}
                         onChange={(e) => handleUpdateTag(index, e.target.value)}
-                        className="flex-1 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50"
+                        className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50"
                         placeholder="标签名称（如：masterpiece）"
                       />
                       <button
@@ -307,7 +307,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               {/* Add Button */}
               <button
                 onClick={handleAddTag}
-                className="w-full p-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/50 rounded-lg transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-purple-400"
+                className="w-full p-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/50 rounded-lg transition-all flex items-center justify-center gap-2 text-gray-400 hover:text-purple-400"
               >
                 <PlusIcon className="w-5 h-5" />
                 添加标签
@@ -377,13 +377,13 @@ const WordRow: React.FC<WordRowProps> = ({ originalKey, value, onUpdate, onDelet
   };
 
   return (
-    <div className="grid grid-cols-[1fr_1fr_auto] gap-4 p-4 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
+    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 p-2 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors group">
       <input
         type="text"
         value={key}
         onChange={(e) => setKey(e.target.value)}
         onBlur={handleKeyBlur}
-        className="bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
+        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
         placeholder="原词"
       />
       <input
@@ -391,7 +391,7 @@ const WordRow: React.FC<WordRowProps> = ({ originalKey, value, onUpdate, onDelet
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onBlur={handleValueBlur}
-        className="bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
+        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
         placeholder="替换词"
       />
       <button
