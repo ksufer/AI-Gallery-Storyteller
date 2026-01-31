@@ -330,44 +330,46 @@ function App() {
       >
         {/* Drag and Drop Overlay */}
         {isDragging && (
-          <div className="fixed inset-0 md:left-64 z-50 bg-cyan-500/20 backdrop-blur-sm border-4 border-dashed border-cyan-500 flex items-center justify-center pointer-events-none">
-            <div className="bg-[#121212]/90 p-8 rounded-2xl border border-cyan-500/50 shadow-2xl">
-              <div className="flex flex-col items-center gap-4">
-                <svg className="w-16 h-16 text-cyan-500 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
+          <div className="fixed inset-0 md:left-64 z-50 bg-black/60 backdrop-blur-sm border-4 border-dashed border-cyan-500/50 flex items-center justify-center pointer-events-none transition-all duration-300">
+            <div className="bg-black/80 backdrop-blur-xl p-10 rounded-3xl border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.2)] transform scale-110 transition-transform">
+              <div className="flex flex-col items-center gap-6">
+                <div className="p-4 rounded-full bg-cyan-500/10 animate-bounce">
+                  <svg className="w-16 h-16 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-white mb-2">拖放图片到这里</p>
-                  <p className="text-sm text-gray-400">支持 PNG, JPG, WEBP 格式</p>
+                  <p className="text-3xl font-bold text-white mb-2 tracking-tight">释放以上传</p>
+                  <p className="text-sm text-gray-400 font-medium">支持 PNG, JPG, WEBP 格式</p>
                 </div>
               </div>
             </div>
           </div>
         )}
         
-        <header className="flex-none sticky top-0 z-30 bg-[#121212]/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex justify-between items-center">
+        <header className="flex-none sticky top-0 z-30 bg-black/40 backdrop-blur-xl border-b border-white/5 px-8 py-5 flex justify-between items-center transition-colors duration-300">
           <div>
-            <h2 className="text-xl font-medium text-white capitalize">
-              {filter.type === 'all' ? '图库' : 
-               filter.type === 'favorite' ? '收藏' : 
+            <h2 className="text-2xl font-semibold text-white capitalize tracking-tight flex items-center gap-2">
+              {filter.type === 'all' ? '全部图库' : 
+               filter.type === 'favorite' ? '我的收藏' : 
                filter.type === 'folder' ? filter.value :
                filter.value}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">共 {filteredImages.length} 张</p>
+            <p className="text-xs text-gray-400 mt-1 font-medium tracking-wide uppercase">共 {filteredImages.length} 张图片</p>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowSettings(true)}
-              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors border border-white/10"
+              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all border border-transparent hover:border-white/10"
               title="设置"
             >
               <CogIcon className="w-5 h-5" />
             </button>
             {uploadStatus && (
-              <div className={`text-sm px-3 py-1 rounded-md ${
+              <div className={`text-xs px-4 py-2 rounded-xl border backdrop-blur-md animate-fade-in ${
                 uploadStatus.type === 'success' 
-                  ? 'bg-green-500/20 text-green-400' 
-                  : 'bg-red-500/20 text-red-400'
+                  ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                  : 'bg-red-500/10 border-red-500/20 text-red-400'
               }`}>
                 {uploadStatus.message}
               </div>
@@ -375,7 +377,7 @@ function App() {
             <button
               onClick={handleFolderUploadClick}
               disabled={isUploading}
-              className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-5 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/20 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-sm"
             >
               {isUploading ? (
                 <SparklesIcon className="w-4 h-4 animate-spin" />
@@ -386,7 +388,7 @@ function App() {
             <button
               onClick={handleUploadClick}
               disabled={isUploading}
-              className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="px-5 py-2.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 hover:text-cyan-200 border border-cyan-500/20 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium text-sm shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:shadow-[0_0_20px_rgba(6,182,212,0.2)]"
             >
               {isUploading ? (
                 <>
