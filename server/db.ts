@@ -7,18 +7,33 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load blocked tags configuration
-let BLOCKED_TAGS: Set<string> = new Set();
+let BLOCKED_PATTERNS: RegExp[] = [];
+
 export const loadBlockedTags = () => {
     try {
         const configPath = path.resolve(__dirname, '../config/blocked-tags.json');
         const content = fs.readFileSync(configPath, 'utf-8');
         const tags = JSON.parse(content) as string[];
-        BLOCKED_TAGS = new Set(tags.map(t => t.toLowerCase()));
-        console.log(`✓ Loaded ${BLOCKED_TAGS.size} blocked tags`);
+        
+        BLOCKED_PATTERNS = tags
+            .filter(t => t && t.trim().length > 0)
+            .map(t => {
+                try {
+                    // Create case-insensitive regex for the pattern
+                    // We treat the input as a regex pattern directly
+                    return new RegExp(t, 'i');
+                } catch (e) {
+                    console.warn(`⚠ Invalid blocked tag regex pattern: "${t}"`, e);
+                    return null;
+                }
+            })
+            .filter((p): p is RegExp => p !== null);
+            
+        console.log(`✓ Loaded ${BLOCKED_PATTERNS.length} blocked tag patterns`);
         return true;
     } catch (error) {
         console.warn('⚠ Could not load blocked-tags.json, using empty blocklist');
-        BLOCKED_TAGS = new Set();
+        BLOCKED_PATTERNS = [];
         return false;
     }
 };
@@ -149,7 +164,10 @@ export const upsertImage = (id: string, filePath: string, dateAdded: string, met
             parts.forEach(part => {
                 const t = part.trim();
                 // Filter out blocked tags and apply length constraints
-                if (t.length > 0 && t.length < 50 && !BLOCKED_TAGS.has(t.toLowerCase())) {
+                // Check if the tag matches any of the blocked patterns
+                const isBlocked = BLOCKED_PATTERNS.some(pattern => pattern.test(t));
+                
+                if (t.length > 0 && t.length < 50 && !isBlocked) {
                     tagsToInsert.add(t);
                 }
             });
