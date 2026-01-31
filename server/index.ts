@@ -173,6 +173,43 @@ app.patch('/api/images/:id/story', async (req, res) => {
     }
 });
 
+// Generate story endpoint for single image
+app.post('/api/images/:id/generate-story', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Get image from database
+        const image = getImageById(id) as any;
+        if (!image) {
+            return res.status(404).json({ error: "Image not found" });
+        }
+        
+        const metadata = JSON.parse(image.meta_json);
+        const prompts = metadata.prompts || [];
+        
+        // Read image file and convert to base64
+        const imageBuffer = await fs.readFile(image.file_path);
+        const base64Image = imageBuffer.toString('base64');
+        const mimeType = image.file_path.endsWith('.png') ? 'image/png' : 
+                       image.file_path.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+        
+        // Import and call gemini service
+        const { generateStoryFromPrompts } = await import('../services/geminiService.js');
+        const story = await generateStoryFromPrompts(prompts, {
+            data: base64Image,
+            mimeType
+        });
+        
+        // Update in database
+        updateImageStory(id, story);
+        
+        res.json({ success: true, story });
+    } catch (error: any) {
+        console.error("Generate Story API Error:", error);
+        res.status(500).json({ error: error.message || "Failed to generate story" });
+    }
+});
+
 // Update favorite endpoint
 app.patch('/api/images/:id/favorite', async (req, res) => {
     try {
