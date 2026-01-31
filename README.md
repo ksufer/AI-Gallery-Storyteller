@@ -129,13 +129,62 @@ copy .env.local.example .env.local
 cp .env.local.example .env.local
 ```
 
-编辑 `.env.local` 文件，填入你的 Gemini API Key：
+编辑 `.env.local` 文件，填入你的配置：
 
 ```env
+# Google Gemini API Key (必填)
 GEMINI_API_KEY=your_actual_api_key_here
+
+# 服务器端口（可选，默认 3000）
+PORT=3000
+
+# 远程访问配置（可选，默认 false - 仅本地访问）
+# 设置为 true 时，允许局域网内其他设备访问
+ENABLE_REMOTE_ACCESS=false
+
+# 自定义主机地址（可选，默认 127.0.0.1）
+# 仅在 ENABLE_REMOTE_ACCESS=false 时生效
+# HOST=127.0.0.1
 ```
 
-> ⚠️ **安全提示**：`.env.local` 已在 `.gitignore` 中，请勿将此文件提交到 Git 仓库！
+**配置说明：**
+
+| 配置项 | 说明 | 默认值 | 示例 |
+|--------|------|--------|------|
+| `GEMINI_API_KEY` | Google Gemini API 密钥（必填） | - | `AIzaSyC...` |
+| `PORT` | 服务器监听端口 | `3000` | `8080` |
+| `ENABLE_REMOTE_ACCESS` | 是否允许远程访问 | `false` | `true` |
+| `HOST` | 服务器绑定的主机地址 | `127.0.0.1` | `0.0.0.0` |
+
+**远程访问配置详解：**
+
+- **仅本地访问（默认）**：
+  ```env
+  ENABLE_REMOTE_ACCESS=false
+  # 或不设置此项
+  ```
+  服务器仅监听 `127.0.0.1`，只能通过 `http://localhost:3000` 访问。
+
+- **允许局域网访问**：
+  ```env
+  ENABLE_REMOTE_ACCESS=true
+  ```
+  服务器监听 `0.0.0.0`，局域网内其他设备可通过 `http://<your-local-ip>:3000` 访问。
+  
+  查看本机局域网 IP：
+  ```bash
+  # Windows
+  ipconfig
+  
+  # macOS/Linux
+  ifconfig
+  ```
+
+> ⚠️ **安全提示**：
+> - `.env.local` 已在 `.gitignore` 中，请勿将此文件提交到 Git 仓库！
+> - 启用远程访问时，请确保在可信任的网络环境中使用
+> - 本应用未内置身份验证机制，启用远程访问意味着任何知道地址的人都可以访问
+> - 建议仅在局域网内使用，避免暴露到公网
 
 #### 4. 配置禁词表和屏蔽标签（可选）
 

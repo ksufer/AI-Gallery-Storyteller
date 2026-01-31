@@ -16,7 +16,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Load server configuration from environment variables
 const PORT = parseInt(process.env.PORT || '3000', 10);
+const ENABLE_REMOTE_ACCESS = process.env.ENABLE_REMOTE_ACCESS === 'true';
+const HOST = ENABLE_REMOTE_ACCESS 
+    ? '0.0.0.0' 
+    : (process.env.HOST || '127.0.0.1');
+
 const UPLOADS_DIR = path.resolve(__dirname, '../uploads');
 const CONFIG_DIR = path.resolve(__dirname, '../config');
 
@@ -610,8 +617,27 @@ const setupServer = async () => {
 };
 
 // Start server
-server.listen(PORT, '0.0.0.0', async () => {
-    console.log(`Server running on http://localhost:${PORT} (${isProduction ? 'production' : 'development'})`);
+server.listen(PORT, HOST, async () => {
+    const accessInfo = ENABLE_REMOTE_ACCESS 
+        ? `\n  - 远程访问: http://<your-local-ip>:${PORT}`
+        : '';
+    
+    console.log(`
+┌─────────────────────────────────────────────────────────┐
+│  🎨 AI Gallery Storyteller                              │
+├─────────────────────────────────────────────────────────┤
+│  Server running in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode                      │
+│                                                         │
+│  Access URLs:                                           │
+│  - 本地访问: http://localhost:${PORT}${accessInfo}
+│                                                         │
+│  Configuration:                                         │
+│  - Port: ${PORT}                                           │
+│  - Host: ${HOST}                                   │
+│  - Remote Access: ${ENABLE_REMOTE_ACCESS ? 'ENABLED ✅' : 'DISABLED ❌'}                      │
+└─────────────────────────────────────────────────────────┘
+    `.trim());
+    
     await setupServer();
     // Start init after server is listening
     init().catch(err => console.error("Init failed:", err));
