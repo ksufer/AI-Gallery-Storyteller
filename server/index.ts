@@ -196,6 +196,10 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
         
         // 根据环境变量选择 AI Provider
         const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+        
+        console.log(`[Story] Start generating for image ${id} using ${aiProvider}...`);
+        const startTime = Date.now();
+        
         let story: string;
         
         if (aiProvider === 'openai') {
@@ -213,6 +217,9 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
                 mimeType
             }, userKeywords);
         }
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[Story] Completed for image ${id} in ${duration}s`);
         
         // Update in database
         updateImageStory(id, story);

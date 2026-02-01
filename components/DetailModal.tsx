@@ -20,6 +20,32 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [userKeywords, setUserKeywords] = useState('');
   const [isEditingStory, setIsEditingStory] = useState(false);
+  const [loadingText, setLoadingText] = useState('AI 生成故事');
+
+  // Timer for loading state
+  useEffect(() => {
+    let interval: any;
+    if (isGenerating) {
+      let seconds = 0;
+      setLoadingText('正在初始化...');
+      
+      interval = setInterval(() => {
+        seconds++;
+        if (seconds <= 5) {
+            setLoadingText(`正在分析画面... ${seconds}s`);
+        } else if (seconds <= 15) {
+            setLoadingText(`正在构思情节... ${seconds}s`);
+        } else if (seconds <= 30) {
+            setLoadingText(`正在撰写故事... ${seconds}s`);
+        } else {
+            setLoadingText(`AI 正在深度思考... ${seconds}s`);
+        }
+      }, 1000);
+    } else {
+      setLoadingText('AI 生成故事');
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   // Sync internal state if prop changes
   useEffect(() => {
@@ -249,10 +275,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                          <button 
                            onClick={handleGenerateStory}
                            disabled={isGenerating}
-                           className="flex items-center gap-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white px-3 py-1.5 rounded-full transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
+                           className="flex items-center gap-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white px-3 py-1.5 rounded-full transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50 min-w-[100px] justify-center"
                          >
                            <SparklesIcon className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-                           {isGenerating ? '生成中...' : 'AI 生成故事'}
+                           {loadingText}
                          </button>
                     </div>
                   </div>
