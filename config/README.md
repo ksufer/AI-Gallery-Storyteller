@@ -164,9 +164,11 @@
 
 ### 使用方法
 
-1. 如果 `system-prompt.json` 不存在，将 `system-prompt.example.json` 复制为 `system-prompt.json`
+1. **首次运行**：服务启动时会自动从 `system-prompt.example.json` 创建 `system-prompt.json`
 2. 编辑 `system-prompt.json`，自定义 AI 的角色、风格和输出格式
 3. 保存文件后即可生效（无需重启服务器）
+
+**注意**：`system-prompt.json` 已添加到 `.gitignore`，不会被 git 跟踪，可以放心修改。
 
 ### 示例
 
@@ -205,6 +207,13 @@
 ### 调试
 
 应用启动时，控制台会显示：
+```
+⚠ 系统提示词文件不存在，尝试从示例文件创建...
+✓ 已从示例文件创建 system-prompt.json
+✓ 已加载系统提示词 (X 字符)
+```
+
+或直接加载已存在的配置：
 ```
 ✓ 已加载系统提示词 (X 字符)
 ```

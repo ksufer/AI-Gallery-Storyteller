@@ -4,6 +4,10 @@
 
 现在你可以直接在前端界面修改系统提示词（System Prompt），无需重启服务器即可生效。
 
+**首次使用**：服务启动时会自动从 `system-prompt.example.json` 创建 `system-prompt.json`，无需手动操作。
+
+**Git 友好**：`system-prompt.json` 已添加到 `.gitignore`，你的个性化配置不会被 git 跟踪。
+
 ## 使用方法
 
 ### 方式一：通过设置界面（推荐）
@@ -71,18 +75,42 @@
 - 如果文件不存在，系统会使用默认提示词
 
 ### 启动时提示
-正常启动时，控制台会显示：
+
+**首次运行（自动创建配置文件）**：
+```
+⚠ 系统提示词文件不存在，尝试从示例文件创建...
+✓ 已从示例文件创建 system-prompt.json
+✓ 已加载系统提示词 (XXX 字符)
+```
+
+**正常启动（配置文件已存在）**：
 ```
 ✓ 已加载系统提示词 (XXX 字符)
 ```
 
-如果加载失败，会显示：
+**加载失败（使用默认提示词）**：
 ```
 ⚠ 无法加载系统提示词配置文件，将使用默认提示词
 ```
 
 ## 相关文件
 
-- `config/system-prompt.json` - 当前使用的提示词
-- `config/system-prompt.example.json` - 示例提示词模板
+- `config/system-prompt.json` - 当前使用的提示词（**不会被 git 跟踪**）
+- `config/system-prompt.example.json` - 示例提示词模板（被 git 跟踪）
 - `config/README.md` - 完整配置文档
+
+## Git 管理
+
+为了避免个性化配置被 git 跟踪，`system-prompt.json` 已添加到 `.gitignore`：
+
+```gitignore
+# Config files (keep examples)
+config/forbidden-words.json
+config/blocked-tags.json
+config/system-prompt.json
+```
+
+只有 `.example.json` 示例文件会被 git 跟踪，确保：
+- ✅ 新用户可以快速开始（自动从示例创建）
+- ✅ 个性化配置不会被提交
+- ✅ 多人协作时不会冲突

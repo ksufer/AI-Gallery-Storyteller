@@ -29,7 +29,7 @@ dist-ssr
 uploads/*
 db/*
 
-# User configuration files
-config/system-prompt.json
+# Config files (keep examples)
 config/forbidden-words.json
 config/blocked-tags.json
+config/system-prompt.json

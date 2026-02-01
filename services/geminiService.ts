@@ -68,12 +68,29 @@ const loadForbiddenWords = async (): Promise<void> => {
 const loadSystemPrompt = (): void => {
   try {
     const configPath = path.join(process.cwd(), 'config', 'system-prompt.json');
+    const examplePath = path.join(process.cwd(), 'config', 'system-prompt.example.json');
+    
+    // 如果配置文件不存在，尝试从示例文件复制
     if (!fs.existsSync(configPath)) {
-      console.warn('⚠ 系统提示词文件不存在:', configPath);
-      // 使用默认提示词
-      SYSTEM_INSTRUCTION = '你是一位擅长视觉美学与叙事艺术的"沉浸式微小说家"。根据画面和提示词创作简短的故事。';
-      return;
+      console.log('⚠ 系统提示词文件不存在，尝试从示例文件创建...');
+      
+      if (fs.existsSync(examplePath)) {
+        try {
+          fs.copyFileSync(examplePath, configPath);
+          console.log('✓ 已从示例文件创建 system-prompt.json');
+        } catch (copyError) {
+          console.warn('⚠ 无法复制示例文件:', copyError instanceof Error ? copyError.message : String(copyError));
+        }
+      }
+      
+      // 如果复制失败或示例文件不存在，使用默认提示词
+      if (!fs.existsSync(configPath)) {
+        console.warn('⚠ 使用默认提示词');
+        SYSTEM_INSTRUCTION = '你是一位擅长视觉美学与叙事艺术的"沉浸式微小说家"。根据画面和提示词创作简短的故事。';
+        return;
+      }
     }
+    
     const fileContent = fs.readFileSync(configPath, 'utf-8');
     const config = JSON.parse(fileContent);
     SYSTEM_INSTRUCTION = config.content || '';
