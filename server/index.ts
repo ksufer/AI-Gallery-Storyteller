@@ -193,12 +193,25 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
         const mimeType = image.file_path.endsWith('.png') ? 'image/png' : 
                        image.file_path.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
         
-        // Import and call gemini service
-        const { generateStoryFromPrompts } = await import('../services/geminiService.js');
-        const story = await generateStoryFromPrompts(prompts, {
-            data: base64Image,
-            mimeType
-        });
+        // 根据环境变量选择 AI Provider
+        const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+        let story: string;
+        
+        if (aiProvider === 'openai') {
+            // 使用 OpenAI 兼容 API
+            const { generateStoryFromPrompts } = await import('../services/openaiService.js');
+            story = await generateStoryFromPrompts(prompts, {
+                data: base64Image,
+                mimeType
+            });
+        } else {
+            // 默认使用 Gemini
+            const { generateStoryFromPrompts } = await import('../services/geminiService.js');
+            story = await generateStoryFromPrompts(prompts, {
+                data: base64Image,
+                mimeType
+            });
+        }
         
         // Update in database
         updateImageStory(id, story);
@@ -468,8 +481,17 @@ app.post('/api/batch/stories', async (req, res) => {
             return res.status(400).json({ success: false, error: "imageIds must be a non-empty array" });
         }
         
-        // Import generateStoryFromPrompts
-        const { generateStoryFromPrompts } = await import('../services/geminiService.js');
+        // 根据环境变量选择 AI Provider
+        const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+        let generateStoryFromPrompts: any;
+        
+        if (aiProvider === 'openai') {
+            const module = await import('../services/openaiService.js');
+            generateStoryFromPrompts = module.generateStoryFromPrompts;
+        } else {
+            const module = await import('../services/geminiService.js');
+            generateStoryFromPrompts = module.generateStoryFromPrompts;
+        }
         
         let succeeded = 0;
         let failed = 0;

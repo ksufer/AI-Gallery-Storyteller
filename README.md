@@ -31,7 +31,8 @@
 - **智能重命名**：自动处理文件名冲突，追加计数器
 
 ### 🤖 AI 故事生成
-- **Gemini 视觉模型**：基于图片内容和提示词生成 100-150 字的沉浸式微小说
+- **多模型支持**：支持 Google Gemini 和 OpenAI 兼容 API（包括 OpenRouter、DeepSeek、Moonshot 等）
+- **灵活配置**：通过环境变量轻松切换 AI 服务提供商
 - **内容过滤系统**
   - 年龄词汇自动过滤：移除 "16岁"、"18 year old" 等敏感词汇
   - 禁词替换表：可配置的词汇映射（如 "少女" → "美女"）
@@ -95,7 +96,8 @@
 - **Node.js + Express 5** - 服务器运行时和框架
 - **SQLite** (better-sqlite3) - 轻量级嵌入式数据库
 - **Multer** - 文件上传中间件
-- **Google Gemini SDK** - AI 故事生成
+- **Google Gemini SDK** - AI 故事生成（默认）
+- **OpenAI SDK** - 支持 OpenAI 兼容 API（可选）
 
 ---
 
@@ -104,7 +106,9 @@
 ### 前置要求
 
 - **Node.js** 18+ ([下载](https://nodejs.org/))
-- **Google Gemini API Key** ([获取](https://aistudio.google.com/app/apikey))
+- **AI API Key** (二选一)：
+  - **Google Gemini API Key** ([获取](https://aistudio.google.com/app/apikey)) - 免费，推荐
+  - **OpenAI 兼容 API Key** - 如 OpenRouter ([获取](https://openrouter.ai/keys))、DeepSeek、Moonshot 等
 
 ### 安装步骤
 
@@ -136,9 +140,23 @@ cp .env.local.example .env.local
 编辑 `.env.local` 文件，填入你的配置：
 
 ```env
-# Google Gemini API Key (必填)
-GEMINI_API_KEY=your_actual_api_key_here
+# ============================================
+# 方案 1: 使用 Google Gemini (推荐，免费)
+# ============================================
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key_here
 
+# ============================================
+# 方案 2: 使用 OpenAI 兼容 API
+# ============================================
+# AI_PROVIDER=openai
+# OPENAI_API_KEY=your_openai_api_key_here
+# OPENAI_BASE_URL=https://openrouter.ai/api/v1  # OpenRouter 示例
+# OPENAI_MODEL=openai/gpt-4o  # 或其他支持视觉的模型
+
+# ============================================
+# 服务器配置
+# ============================================
 # 服务器端口（可选，默认 3000）
 PORT=3000
 
@@ -146,19 +164,59 @@ PORT=3000
 # 设置为 true 时，允许局域网内其他设备访问
 ENABLE_REMOTE_ACCESS=false
 
-# 自定义主机地址（可选，默认 127.0.0.1）
-# 仅在 ENABLE_REMOTE_ACCESS=false 时生效
-# HOST=127.0.0.1
+# 代理设置（可选，用于访问国外 API）
+# HTTPS_PROXY=http://127.0.0.1:7890
 ```
 
 **配置说明：**
 
 | 配置项 | 说明 | 默认值 | 示例 |
 |--------|------|--------|------|
-| `GEMINI_API_KEY` | Google Gemini API 密钥（必填） | - | `AIzaSyC...` |
+| `AI_PROVIDER` | AI 服务提供商 | `gemini` | `gemini` / `openai` |
+| `GEMINI_API_KEY` | Google Gemini API 密钥 | - | `AIzaSyC...` |
+| `OPENAI_API_KEY` | OpenAI 兼容 API 密钥 | - | `sk-or-v1-...` |
+| `OPENAI_BASE_URL` | OpenAI API 端点地址 | `https://api.openai.com/v1` | `https://openrouter.ai/api/v1` |
+| `OPENAI_MODEL` | 使用的模型名称 | `gpt-4o` | `openai/gpt-4o` |
 | `PORT` | 服务器监听端口 | `3000` | `8080` |
 | `ENABLE_REMOTE_ACCESS` | 是否允许远程访问 | `false` | `true` |
-| `HOST` | 服务器绑定的主机地址 | `127.0.0.1` | `0.0.0.0` |
+
+**AI Provider 选择指南：**
+
+**1. Google Gemini (推荐)**
+- ✅ 完全免费（每天 1500 次请求）
+- ✅ 视觉分析能力强
+- ✅ 支持中文
+- ⚠️ 国内需要代理访问
+
+**2. OpenRouter**
+- ✅ 一个 API Key 支持多个模型
+- ✅ 提供免费模型（如 `google/gemini-2.0-flash-exp:free`）
+- ✅ 国内可直接访问（无需代理）
+- ✅ 支持 GPT-4o、Claude、Gemini 等多种模型
+- 💰 付费模型按使用量计费
+
+**3. 其他 OpenAI 兼容服务**
+- **DeepSeek**：国内服务，价格便宜
+  ```env
+  AI_PROVIDER=openai
+  OPENAI_API_KEY=your_deepseek_key
+  OPENAI_BASE_URL=https://api.deepseek.com
+  OPENAI_MODEL=deepseek-chat
+  ```
+- **Moonshot (月之暗面)**：国内服务，长上下文
+  ```env
+  AI_PROVIDER=openai
+  OPENAI_API_KEY=your_moonshot_key
+  OPENAI_BASE_URL=https://api.moonshot.cn/v1
+  OPENAI_MODEL=moonshot-v1-8k
+  ```
+- **本地 Ollama**：完全免费，本地运行
+  ```env
+  AI_PROVIDER=openai
+  OPENAI_API_KEY=ollama  # 任意值即可
+  OPENAI_BASE_URL=http://localhost:11434/v1
+  OPENAI_MODEL=llava  # 支持视觉的模型
+  ```
 
 **远程访问配置详解：**
 
@@ -218,6 +276,112 @@ npm run dev
 npm run build
 npm start
 ```
+
+---
+
+## 🤖 AI 模型选择指南
+
+本应用支持多种 AI 服务，你可以根据需求选择最合适的方案。
+
+### 方案对比
+
+| 服务 | 费用 | 国内访问 | 视觉能力 | 推荐场景 |
+|------|------|----------|----------|----------|
+| **Google Gemini** | 🆓 完全免费 | ⚠️ 需要代理 | ⭐⭐⭐⭐⭐ 优秀 | 有代理，追求质量 |
+| **OpenRouter (Gemini Free)** | 🆓 免费模型可用 | ✅ 直连 | ⭐⭐⭐⭐⭐ 优秀 | 国内无代理用户 |
+| **OpenRouter (GPT-4o)** | 💰 按量付费 | ✅ 直连 | ⭐⭐⭐⭐⭐ 优秀 | 追求稳定性 |
+| **DeepSeek** | 💰 便宜 | ✅ 直连 | ⭐⭐⭐ 一般 | 预算有限 |
+| **Moonshot** | 💰 中等 | ✅ 直连 | ⭐⭐⭐ 一般 | 需要长上下文 |
+| **本地 Ollama** | 🆓 完全免费 | ✅ 本地 | ⭐⭐ 较弱 | 注重隐私 |
+
+### 推荐配置
+
+#### 🥇 最佳选择：Google Gemini（有代理）
+
+```env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key_here
+HTTPS_PROXY=http://127.0.0.1:7890
+```
+
+**优点**：
+- 完全免费，每天 1500 次请求
+- 视觉分析能力最强
+- 原生支持中文
+
+#### 🥈 国内最佳：OpenRouter + 免费 Gemini
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-or-v1-xxxxx
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=google/gemini-2.0-flash-exp:free
+```
+
+**优点**：
+- 无需代理，直接访问
+- 使用 OpenRouter 的免费 Gemini 模型
+- 一个账号可切换多个模型
+
+**获取 API Key**：
+1. 访问 [OpenRouter](https://openrouter.ai/)
+2. 注册并登录
+3. 进入 [Keys 页面](https://openrouter.ai/keys) 创建 API Key
+4. 复制密钥到 `.env.local`
+
+#### 💰 付费稳定：OpenRouter + GPT-4o
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-or-v1-xxxxx
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_MODEL=openai/gpt-4o
+```
+
+**价格参考**（通过 OpenRouter）：
+- GPT-4o: ~$2.5 / 1M tokens（约 200 张图片生成故事）
+- Claude 3.5 Sonnet: ~$3 / 1M tokens
+- Gemini 1.5 Pro: ~$1.25 / 1M tokens
+
+### OpenRouter 可用模型列表
+
+访问 [OpenRouter Models](https://openrouter.ai/models) 查看完整列表，支持视觉的热门模型：
+
+- `google/gemini-2.0-flash-exp:free` - 免费，推荐
+- `openai/gpt-4o` - 高质量，付费
+- `anthropic/claude-3.5-sonnet` - 长文本，付费
+- `google/gemini-pro-1.5` - 平衡，付费
+
+### 本地部署方案（完全免费）
+
+使用 Ollama 在本地运行模型，无需联网，完全隐私：
+
+**1. 安装 Ollama**
+```bash
+# Windows: 下载安装程序
+# https://ollama.ai/download
+
+# macOS
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.ai/install.sh | sh
+```
+
+**2. 下载支持视觉的模型**
+```bash
+ollama pull llava
+```
+
+**3. 配置 .env.local**
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=llava
+```
+
+**注意**：本地模型的视觉分析能力相对较弱，生成质量不如云端服务。
 
 ---
 
@@ -317,6 +481,7 @@ AI-Gallery-Storyteller/
 │   └── organizer.ts        # 文件整理与同步
 ├── services/                # 前端服务
 │   ├── geminiService.ts    # Gemini API 调用
+│   ├── openaiService.ts    # OpenAI 兼容 API 调用
 │   └── imageParser.ts      # 图片解析逻辑
 ├── config/                  # 配置文件目录
 │   ├── forbidden-words.json      # 禁词替换表
@@ -376,8 +541,20 @@ AI-Gallery-Storyteller/
 
 ### 常见问题
 
+**Q: 如何选择 AI 服务？**
+- A: 参考上方的"AI 模型选择指南"。有代理推荐 Gemini，国内无代理推荐 OpenRouter。
+
+**Q: OpenRouter 的免费模型有限制吗？**
+- A: 免费模型有速率限制（约 20 次/分钟），适合个人使用。如需更高频率，可升级到付费模型。
+
 **Q: Gemini API 返回 "PROHIBITED_CONTENT" 错误**
-- A: 这是因为提示词包含敏感内容。系统会自动尝试仅用图片生成，如果仍失败，请手动编辑禁词表。
+- A: 这是因为提示词包含敏感内容。系统会自动尝试仅用图片生成，如果仍失败，请手动编辑禁词表或切换到 OpenRouter。
+
+**Q: OpenAI API 返回 401 错误**
+- A: API Key 无效或已过期，请检查 `.env.local` 中的 `OPENAI_API_KEY` 配置。
+
+**Q: 国内无法连接 Gemini API**
+- A: 需要配置代理，或切换到 OpenRouter（无需代理）。
 
 **Q: 上传的图片无法解析元数据**
 - A: 确保图片是从 ComfyUI 或 SD WebUI 生成的 PNG 格式，且包含元数据。
