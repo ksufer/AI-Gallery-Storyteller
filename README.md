@@ -196,27 +196,34 @@ ENABLE_REMOTE_ACCESS=false
 - 💰 付费模型按使用量计费
 
 **3. 其他 OpenAI 兼容服务**
-- **DeepSeek**：国内服务，价格便宜
+- **DeepSeek**：国内服务，价格便宜（⚠️ 不支持视觉，仅用提示词生成）
   ```env
   AI_PROVIDER=openai
   OPENAI_API_KEY=your_deepseek_key
   OPENAI_BASE_URL=https://api.deepseek.com
   OPENAI_MODEL=deepseek-chat
+  OPENAI_VISION_SUPPORT=false
   ```
-- **Moonshot (月之暗面)**：国内服务，长上下文
+- **Moonshot (月之暗面)**：国内服务，长上下文（⚠️ 不支持视觉）
   ```env
   AI_PROVIDER=openai
   OPENAI_API_KEY=your_moonshot_key
   OPENAI_BASE_URL=https://api.moonshot.cn/v1
   OPENAI_MODEL=moonshot-v1-8k
+  OPENAI_VISION_SUPPORT=false
   ```
-- **本地 Ollama**：完全免费，本地运行
+- **本地 Ollama**：完全免费，本地运行（⚠️ 视觉能力较弱）
   ```env
   AI_PROVIDER=openai
   OPENAI_API_KEY=ollama  # 任意值即可
   OPENAI_BASE_URL=http://localhost:11434/v1
   OPENAI_MODEL=llava  # 支持视觉的模型
   ```
+
+> 💡 **关于视觉支持**：
+> - 支持视觉的模型可以分析图片内容并结合提示词生成故事
+> - 不支持视觉的模型仅能使用提示词生成，系统会自动检测并调整
+> - 完整兼容性说明请查看 [AI Provider 指南](docs/AI_PROVIDER_GUIDE.md)
 
 **远程访问配置详解：**
 

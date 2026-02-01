@@ -274,6 +274,80 @@ A: 启动服务器后，在终端日志中会显示：
 
 也可以在生成故事时查看控制台输出的 Debug 信息。
 
+### Q: 我的模型不支持视觉分析怎么办？
+
+A: 如果使用的是纯文本模型（如 GPT-3.5-turbo、DeepSeek Chat），系统会**自动检测**并仅使用提示词生成故事。
+
+**自动检测规则**：
+系统会根据模型名称自动判断是否支持视觉，已知支持视觉的模型关键词包括：
+- `gpt-4o`, `gpt-4-turbo`, `gpt-4-vision`
+- `claude-3`
+- `gemini`
+- `llava`
+- `qwen-vl`
+- `glm-4v`
+
+**手动配置**（如果自动检测不准确）：
+```env
+# 明确指定模型不支持视觉
+OPENAI_VISION_SUPPORT=false
+
+# 或者明确指定模型支持视觉
+OPENAI_VISION_SUPPORT=true
+```
+
+**控制台提示**：
+如果上传了图片但模型不支持视觉，会看到警告：
+```
+⚠️  模型不支持视觉分析，将仅使用提示词生成故事
+提示：如需使用图片分析，请切换到支持视觉的模型（如 gpt-4o）
+```
+
+### Q: 哪些模型支持视觉分析？
+
+A: 常见支持视觉的模型：
+
+**OpenRouter**：
+- ✅ `openai/gpt-4o`
+- ✅ `openai/gpt-4-turbo`
+- ✅ `anthropic/claude-3-opus`
+- ✅ `anthropic/claude-3-sonnet`
+- ✅ `anthropic/claude-3-haiku`
+- ✅ `google/gemini-pro-vision`
+- ✅ `google/gemini-2.0-flash-exp:free` (免费)
+
+**直接接入**：
+- ✅ Google Gemini (所有版本)
+- ✅ GPT-4o, GPT-4-turbo
+- ✅ Claude 3 系列
+- ✅ 通义千问 VL (qwen-vl-plus)
+- ✅ 智谱 GLM-4V
+- ✅ 本地 LLaVA (Ollama)
+
+**不支持视觉**：
+- ❌ GPT-3.5-turbo
+- ❌ DeepSeek Chat
+- ❌ Moonshot (月之暗面)
+- ❌ 大部分纯文本模型
+
+### Q: 提示词被拦截了怎么办？
+
+A: 系统有**自动降级策略**：
+
+1. **第一次尝试**：使用提示词 + 图片生成
+2. **如果被拦截**：自动重试，仅使用图片生成（不带提示词）
+3. **如果仍失败**：返回错误信息
+
+**注意事项**：
+- 降级策略**仅在模型支持视觉时有效**
+- 如果使用纯文本模型且提示词被拦截，会直接返回错误
+- 生成结果会标注 "（提示词未通过安全检查）"
+
+**避免被拦截的方法**：
+1. 使用"禁词替换表"功能预先替换敏感词
+2. 切换到内容审查较宽松的服务（如 OpenRouter）
+3. 手动修改提示词，移除敏感内容
+
 ### Q: OpenRouter 的免费模型有限制吗？
 
 A: 是的，免费模型有以下限制：
