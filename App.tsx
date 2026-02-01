@@ -5,7 +5,6 @@ import SettingsModal from './components/SettingsModal';
 import VirtualMasonryGallery from './components/VirtualMasonryGallery';
 import BatchActionBar from './components/BatchActionBar';
 import { GalleryImage, FilterState, PaginatedResponse } from './types';
-import { MOCK_IMAGES } from './constants';
 import { SparklesIcon, CogIcon } from './components/Icons';
 
 function App() {
@@ -77,19 +76,14 @@ function App() {
       } else {
         // Legacy response (array of images)
         const legacyData = data as GalleryImage[];
-        if (legacyData.length === 0) {
-          setImages(MOCK_IMAGES);
-          setTotalImages(MOCK_IMAGES.length);
-        } else {
-          setImages(legacyData);
-          setTotalImages(legacyData.length);
-        }
+        setImages(legacyData);
+        setTotalImages(legacyData.length);
         setHasMore(false);
       }
     } catch (err) {
       console.error("Failed to load images:", err);
-      setImages(MOCK_IMAGES);
-      setTotalImages(MOCK_IMAGES.length);
+      setImages([]);
+      setTotalImages(0);
       setHasMore(false);
     } finally {
       setIsLoading(false);
