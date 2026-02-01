@@ -9,12 +9,17 @@ interface ForbiddenWords {
   [key: string]: string;
 }
 
-type TabType = 'forbidden-words' | 'blocked-tags';
+interface SystemPromptData {
+  content: string;
+}
+
+type TabType = 'forbidden-words' | 'blocked-tags' | 'system-prompt';
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<TabType>('forbidden-words');
   const [words, setWords] = useState<ForbiddenWords>({});
   const [blockedTags, setBlockedTags] = useState<string[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -22,8 +27,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   useEffect(() => {
     if (activeTab === 'forbidden-words') {
       fetchForbiddenWords();
-    } else {
+    } else if (activeTab === 'blocked-tags') {
       fetchBlockedTags();
+    } else if (activeTab === 'system-prompt') {
+      fetchSystemPrompt();
     }
   }, [activeTab]);
 
@@ -73,6 +80,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     }
   };
 
+  const fetchSystemPrompt = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/settings/system-prompt');
+      const result = await response.json();
+      
+      if (result.success) {
+        setSystemPrompt(result.data?.content || '');
+      } else {
+        setMessage({ text: `加载失败: ${result.error}`, type: 'error' });
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch system prompt:', error);
+      setMessage({ text: `加载失败: ${error.message}`, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setMessage(null);
@@ -93,7 +119,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         } else {
           setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
         }
-      } else {
+      } else if (activeTab === 'blocked-tags') {
         const response = await fetch('/api/settings/blocked-tags', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -104,6 +130,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
         if (result.success) {
           setMessage({ text: '设置已保存！新导入的图片将应用屏蔽规则。', type: 'success' });
+          setTimeout(() => setMessage(null), 3000);
+        } else {
+          setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
+        }
+      } else if (activeTab === 'system-prompt') {
+        const response = await fetch('/api/settings/system-prompt', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: systemPrompt })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setMessage({ text: '系统提示词已更新！生成故事时将使用新的提示词。', type: 'success' });
           setTimeout(() => setMessage(null), 3000);
         } else {
           setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
@@ -201,12 +242,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             >
               标签屏蔽列表
             </button>
+            <button
+              onClick={() => setActiveTab('system-prompt')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'system-prompt'
+                  ? 'bg-[#18181b] text-white border-t-2 border-green-500'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              系统提示词
+            </button>
           </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-[#18181b] custom-scrollbar">
-          
           {isLoading ? (
             <div className="flex justify-center items-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
@@ -264,7 +314,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               </button>
 
             </div>
-          ) : (
+          ) : activeTab === 'blocked-tags' ? (
             <div className="space-y-2">
               
               {/* Info Box */}
@@ -316,7 +366,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               </button>
 
             </div>
-          )}
+          ) : activeTab === 'system-prompt' ? (
+            <div className="space-y-2">
+              
+              {/* Info Box */}
+              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <p className="text-sm text-green-400">
+                  配置 AI 生成故事时使用的系统提示词（System Prompt）。这将直接影响生成内容的风格和质量。
+                </p>
+                <p className="text-xs text-green-400/70 mt-2">
+                  💡 修改后保存即可生效，无需重启服务器
+                </p>
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                className="w-full h-[calc(100vh-32rem)] bg-black/40 border border-white/10 rounded-lg p-4 text-sm text-gray-300 font-mono focus:outline-none focus:border-green-500/50 transition-colors custom-scrollbar resize-none"
+                placeholder="请输入系统提示词..."
+                spellCheck={false}
+              />
+
+              {/* Character Count */}
+              <div className="text-xs text-gray-500 text-right">
+                {systemPrompt.length} 字符
+              </div>
+
+            </div>
+          ) : null}
 
         </div>
 

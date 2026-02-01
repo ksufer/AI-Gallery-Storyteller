@@ -608,6 +608,55 @@ app.put('/api/settings/forbidden-words', async (req, res) => {
     }
 });
 
+// Get system prompt settings
+app.get('/api/settings/system-prompt', async (req, res) => {
+    try {
+        const { getSystemPrompt } = await import('../services/geminiService.js');
+        const prompt = getSystemPrompt();
+        res.json({ success: true, data: { content: prompt } });
+    } catch (error: any) {
+        console.error("Get System Prompt API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to read system prompt" });
+    }
+});
+
+// Update system prompt settings
+app.put('/api/settings/system-prompt', async (req, res) => {
+    try {
+        const { content } = req.body;
+        
+        // Validate that content is a string
+        if (typeof content !== 'string') {
+            return res.status(400).json({ success: false, error: "Invalid format: content must be a string" });
+        }
+        
+        const configPath = path.join(CONFIG_DIR, 'system-prompt.json');
+        
+        // Ensure config directory exists
+        try {
+            await fs.access(CONFIG_DIR);
+        } catch {
+            await fs.mkdir(CONFIG_DIR, { recursive: true });
+        }
+        
+        // Write to file with pretty formatting
+        await fs.writeFile(configPath, JSON.stringify({ content }, null, 2), 'utf-8');
+        
+        // Reload the prompt in memory
+        const { reloadSystemPrompt } = await import('../services/geminiService.js');
+        const reloaded = reloadSystemPrompt();
+        
+        res.json({ 
+            success: true, 
+            message: "System prompt updated successfully",
+            reloaded 
+        });
+    } catch (error: any) {
+        console.error("Update System Prompt API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to update system prompt" });
+    }
+});
+
 // Get blocked tags settings
 app.get('/api/settings/blocked-tags', async (req, res) => {
     try {
