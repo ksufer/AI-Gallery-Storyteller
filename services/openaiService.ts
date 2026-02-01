@@ -163,7 +163,8 @@ const supportsVision = (): boolean => {
  */
 export const generateStoryFromPrompts = async (
   prompts: string[], 
-  image?: ImageInput
+  image?: ImageInput,
+  additionalKeywords?: string
 ): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -177,7 +178,13 @@ export const generateStoryFromPrompts = async (
     // 应用禁词表替换
     safePrompts = safePrompts.map(p => applyForbiddenWordsFilter(p));
 
-    const promptText = `提示词: ${safePrompts.join(', ')}`;
+    let promptText = `提示词: ${safePrompts.join(', ')}`;
+
+    // 添加用户指定的关键词
+    if (additionalKeywords && additionalKeywords.trim()) {
+        const safeKeywords = applyForbiddenWordsFilter(additionalKeywords.trim());
+        promptText += `\n\n用户特别要求(必须重点体现): ${safeKeywords}`;
+    }
     
     // 检查模型是否支持视觉
     const hasVisionSupport = supportsVision();

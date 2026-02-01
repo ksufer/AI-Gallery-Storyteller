@@ -177,6 +177,7 @@ app.patch('/api/images/:id/story', async (req, res) => {
 app.post('/api/images/:id/generate-story', async (req, res) => {
     try {
         const { id } = req.params;
+        const { userKeywords } = req.body;
         
         // Get image from database
         const image = getImageById(id) as any;
@@ -203,14 +204,14 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
             story = await generateStoryFromPrompts(prompts, {
                 data: base64Image,
                 mimeType
-            });
+            }, userKeywords);
         } else {
             // 默认使用 Gemini
             const { generateStoryFromPrompts } = await import('../services/geminiService.js');
             story = await generateStoryFromPrompts(prompts, {
                 data: base64Image,
                 mimeType
-            });
+            }, userKeywords);
         }
         
         // Update in database

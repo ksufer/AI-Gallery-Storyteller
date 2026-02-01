@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { GalleryImage } from '../types';
-import { SparklesIcon, XMarkIcon, HeartIcon, TrashIcon, PlusIcon } from './Icons';
+import { SparklesIcon, XMarkIcon, HeartIcon, TrashIcon, PlusIcon, PencilIcon, EyeIcon } from './Icons';
 
 interface DetailModalProps {
   image: GalleryImage;
@@ -17,6 +18,8 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
   const [tags, setTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [userKeywords, setUserKeywords] = useState('');
+  const [isEditingStory, setIsEditingStory] = useState(false);
 
   // Sync internal state if prop changes
   useEffect(() => {
@@ -51,7 +54,9 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     try {
       // Call backend API to generate story
       const response = await fetch(`/api/images/${image.id}/generate-story`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userKeywords })
       });
 
       if (!response.ok) {
@@ -230,26 +235,64 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
             
             {/* Story Teller Section */}
             <div className="space-y-3">
-               <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-medium text-purple-400 uppercase tracking-wider">故事模式</h4>
-                  <button 
-                    onClick={handleGenerateStory}
-                    disabled={isGenerating}
-                    className="flex items-center gap-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white px-3 py-1.5 rounded-full transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
-                  >
-                    <SparklesIcon className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-                    {isGenerating ? '生成中...' : 'AI 生成故事'}
-                  </button>
+               <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-purple-400 uppercase tracking-wider">故事模式</h4>
+                    <div className="flex items-center gap-2">
+                         <button 
+                           onClick={() => setIsEditingStory(!isEditingStory)}
+                           className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                           title={isEditingStory ? "预览 Markdown" : "编辑源码"}
+                         >
+                           {isEditingStory ? <EyeIcon className="w-4 h-4" /> : <PencilIcon className="w-4 h-4" />}
+                         </button>
+                         <button 
+                           onClick={handleGenerateStory}
+                           disabled={isGenerating}
+                           className="flex items-center gap-2 text-xs font-semibold bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white px-3 py-1.5 rounded-full transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50"
+                         >
+                           <SparklesIcon className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+                           {isGenerating ? '生成中...' : 'AI 生成故事'}
+                         </button>
+                    </div>
+                  </div>
+                  
+                  {/* User Keywords Input */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={userKeywords}
+                      onChange={(e) => setUserKeywords(e.target.value)}
+                      placeholder="输入关键词（可选），AI 将围绕它进行创作..."
+                      className="w-full bg-black/20 border border-purple-500/20 rounded-lg px-3 py-2 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:bg-black/40 transition-all"
+                    />
+                  </div>
                </div>
-               <div className="relative group">
-                 <textarea
-                    value={story}
-                    onChange={(e) => setStory(e.target.value)}
-                    onBlur={handleStorySave}
-                    placeholder="为这张图写一段故事，或使用 AI 生成..."
-                    className="w-full h-40 bg-black/30 border border-white/10 rounded-lg p-4 text-gray-300 text-sm leading-relaxed focus:outline-none focus:border-purple-500/50 resize-none font-sans"
-                 />
-                 <div className="absolute inset-0 rounded-lg pointer-events-none border border-transparent group-hover:border-white/5 transition-colors"></div>
+
+               <div className="relative group min-h-[300px]">
+                 {isEditingStory ? (
+                     <textarea
+                        value={story}
+                        onChange={(e) => setStory(e.target.value)}
+                        onBlur={handleStorySave}
+                        placeholder="为这张图写一段故事，或使用 AI 生成..."
+                        className="w-full h-full min-h-[300px] bg-black/30 border border-white/10 rounded-lg p-4 text-gray-300 text-sm leading-relaxed focus:outline-none focus:border-purple-500/50 resize-y font-sans font-mono"
+                     />
+                 ) : (
+                     <div 
+                        className="w-full h-full min-h-[300px] bg-black/30 border border-white/10 rounded-lg p-4 text-gray-300 text-sm leading-relaxed overflow-y-auto prose prose-invert prose-sm max-w-none"
+                        onClick={() => setIsEditingStory(true)}
+                     >
+                        {story ? (
+                            <ReactMarkdown>{story}</ReactMarkdown>
+                        ) : (
+                            <span className="text-gray-600 italic">点击此处或上方按钮开始编辑...</span>
+                        )}
+                     </div>
+                 )}
+                 {!isEditingStory && (
+                    <div className="absolute inset-0 rounded-lg pointer-events-none border border-transparent group-hover:border-white/5 transition-colors"></div>
+                 )}
                </div>
             </div>
 
