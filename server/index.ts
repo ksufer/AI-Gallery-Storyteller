@@ -173,7 +173,7 @@ app.patch('/api/images/:id/story', async (req, res) => {
     }
 });
 
-// Generate story endpoint for single image
+// Generate story endpoint for single image (Streamed)
 app.post('/api/images/:id/generate-story', async (req, res) => {
     try {
         const { id } = req.params;
@@ -197,37 +197,60 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
         // 根据环境变量选择 AI Provider
         const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
         
-        console.log(`[Story] Start generating for image ${id} using ${aiProvider}...`);
-        const startTime = Date.now();
+        console.log(`[Story] Start generating for image ${id} using ${aiProvider} (Stream)...`);
         
-        let story: string;
+        // Set SSE headers
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        
+        let generateStoryStream: any;
         
         if (aiProvider === 'openai') {
-            // 使用 OpenAI 兼容 API
-            const { generateStoryFromPrompts } = await import('../services/openaiService.js');
-            story = await generateStoryFromPrompts(prompts, {
-                data: base64Image,
-                mimeType
-            }, userKeywords);
+            const module = await import('../services/openaiService.js');
+            generateStoryStream = module.generateStoryStream;
         } else {
-            // 默认使用 Gemini
-            const { generateStoryFromPrompts } = await import('../services/geminiService.js');
-            story = await generateStoryFromPrompts(prompts, {
-                data: base64Image,
-                mimeType
-            }, userKeywords);
+            const module = await import('../services/geminiService.js');
+            generateStoryStream = module.generateStoryStream;
         }
 
-        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[Story] Completed for image ${id} in ${duration}s`);
-        
-        // Update in database
-        updateImageStory(id, story);
-        
-        res.json({ success: true, story });
+        const stream = generateStoryStream(prompts, {
+            data: base64Image,
+            mimeType
+        }, userKeywords);
+
+        let fullStory = '';
+
+        try {
+            for await (const chunk of stream) {
+                fullStory += chunk;
+                // Send chunk to client
+                res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            }
+            
+            // Update in database
+            updateImageStory(id, fullStory);
+            
+            // Send done signal
+            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+            res.end();
+            console.log(`[Story] Stream completed for image ${id}. Length: ${fullStory.length}`);
+            
+        } catch (streamError: any) {
+            console.error("Stream generation error:", streamError);
+            res.write(`data: ${JSON.stringify({ error: streamError.message || "生成中断" })}\n\n`);
+            res.end();
+        }
+
     } catch (error: any) {
         console.error("Generate Story API Error:", error);
-        res.status(500).json({ error: error.message || "Failed to generate story" });
+        // If headers haven't been sent yet, send JSON error
+        if (!res.headersSent) {
+            res.status(500).json({ error: error.message || "Failed to generate story" });
+        } else {
+            res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+            res.end();
+        }
     }
 });
 

@@ -22,31 +22,6 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
   const [isEditingStory, setIsEditingStory] = useState(false);
   const [loadingText, setLoadingText] = useState('AI 生成故事');
 
-  // Timer for loading state
-  useEffect(() => {
-    let interval: any;
-    if (isGenerating) {
-      let seconds = 0;
-      setLoadingText('正在初始化...');
-      
-      interval = setInterval(() => {
-        seconds++;
-        if (seconds <= 5) {
-            setLoadingText(`正在分析画面... ${seconds}s`);
-        } else if (seconds <= 15) {
-            setLoadingText(`正在构思情节... ${seconds}s`);
-        } else if (seconds <= 30) {
-            setLoadingText(`正在撰写故事... ${seconds}s`);
-        } else {
-            setLoadingText(`AI 正在深度思考... ${seconds}s`);
-        }
-      }, 1000);
-    } else {
-      setLoadingText('AI 生成故事');
-    }
-    return () => clearInterval(interval);
-  }, [isGenerating]);
-
   // Sync internal state if prop changes
   useEffect(() => {
     setStory(image.story || '');
@@ -77,8 +52,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
 
   const handleGenerateStory = useCallback(async () => {
     setIsGenerating(true);
+    setStory(''); // Clear existing story
+    setLoadingText('正在连接...');
+    
     try {
-      // Call backend API to generate story
       const response = await fetch(`/api/images/${image.id}/generate-story`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,21 +63,62 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || '生成失败');
+        let errorMessage = '生成失败';
+        try {
+            const error = await response.json();
+            errorMessage = error.error || errorMessage;
+        } catch {
+            errorMessage = await response.text() || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      const result = await response.json();
-      const newStory = result.story;
+      if (!response.body) throw new Error('无法读取流');
       
-      setStory(newStory);
-      onUpdateStory(image.id, newStory);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedStory = '';
+      let buffer = '';
+      
+      setLoadingText('正在生成...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || ''; // Keep incomplete part in buffer
+
+        for (const part of parts) {
+            if (part.startsWith('data: ')) {
+                const jsonStr = part.slice(6);
+                if (!jsonStr.trim()) continue;
+                
+                try {
+                    const data = JSON.parse(jsonStr);
+                    if (data.chunk) {
+                        accumulatedStory += data.chunk;
+                        setStory(accumulatedStory);
+                    }
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                } catch (e) {
+                    console.warn('Error parsing SSE data:', e);
+                }
+            }
+        }
+      }
+      
+      onUpdateStory(image.id, accumulatedStory);
+
     } catch (e: any) {
       console.error(e);
-      // Show error in the text area so user knows what happened
-      setStory(`[生成出错] ${e.message || "未知错误，请重试。"}`);
+      setStory(prev => prev + `\n\n[生成出错] ${e.message || "未知错误，请重试。"}`);
     } finally {
       setIsGenerating(false);
+      setLoadingText('AI 生成故事');
     }
   }, [image.id, onUpdateStory, userKeywords]);
 

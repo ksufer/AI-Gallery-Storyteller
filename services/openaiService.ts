@@ -331,3 +331,132 @@ export const generateStoryFromPrompts = async (
     throw new Error(error.message || "通过 OpenAI 生成故事失败");
   }
 };
+
+export const generateStoryStream = async function* (
+  prompts: string[], 
+  image?: ImageInput,
+  additionalKeywords?: string
+): AsyncGenerator<string, void, unknown> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("未设置 API 密钥");
+  }
+
+  try {
+    let safePrompts = prompts.map(p => filterAgeWords(p));
+    safePrompts = safePrompts.map(p => applyForbiddenWordsFilter(p));
+
+    let promptText = `提示词: ${safePrompts.join(', ')}`;
+
+    if (additionalKeywords && additionalKeywords.trim()) {
+        const safeKeywords = applyForbiddenWordsFilter(additionalKeywords.trim());
+        promptText += `\n\n用户特别要求(必须重点体现): ${safeKeywords}`;
+    }
+    
+    const hasVisionSupport = supportsVision();
+    const useImage = image && hasVisionSupport;
+
+    const openai = getClient();
+    
+    const messages: any[] = [
+      {
+        role: "system",
+        content: SYSTEM_INSTRUCTION
+      }
+    ];
+
+    if (useImage) {
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: promptText },
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:${image.mimeType};base64,${image.data}`,
+              detail: "high"
+            }
+          }
+        ]
+      });
+    } else {
+      messages.push({
+        role: "user",
+        content: promptText
+      });
+    }
+
+    try {
+        const stream = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || "gpt-4o",
+          messages,
+          temperature: 0.8,
+          max_tokens: 500,
+          stream: true,
+          // @ts-ignore
+          transforms: ["middle-out"]
+        });
+
+        for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) {
+                yield content;
+            }
+        }
+    } catch (innerError: any) {
+         // Fallback logic for content policy
+        const isContentPolicyError = 
+          innerError.message?.includes('content_policy') ||
+          innerError.message?.includes('content_filter') ||
+          innerError.message?.includes('safety') ||
+          innerError.code === 'content_policy_violation';
+        
+        if (isContentPolicyError && image && supportsVision()) {
+            console.log("=== [Stream] 检测到内容策略错误，尝试降级策略（仅图片） ===");
+            const fallbackMessages: any[] = [
+              {
+                role: "system",
+                content: SYSTEM_INSTRUCTION
+              },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "请根据图片内容创作一段 100-150 字的故事。" },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${image.mimeType};base64,${image.data}`,
+                      detail: "high"
+                    }
+                  }
+                ]
+              }
+            ];
+            
+            const fallbackStream = await openai.chat.completions.create({
+              model: process.env.OPENAI_MODEL || "gpt-4o",
+              messages: fallbackMessages,
+              temperature: 0.8,
+              max_tokens: 500,
+              stream: true,
+              // @ts-ignore
+              transforms: ["middle-out"]
+            });
+
+            for await (const chunk of fallbackStream) {
+                const content = chunk.choices[0]?.delta?.content || '';
+                if (content) {
+                    yield content;
+                }
+            }
+            yield "\n\n（提示词未通过安全检查）";
+        } else {
+            throw innerError;
+        }
+    }
+
+  } catch (error: any) {
+    console.error("OpenAI Stream API Error:", error);
+    throw new Error(error.message || "通过 OpenAI 生成故事失败");
+  }
+};

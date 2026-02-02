@@ -298,3 +298,122 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
     throw new Error(error.message || "通过 Gemini 生成故事失败。");
   }
 };
+
+export const generateStoryStream = async function* (prompts: string[], image?: ImageInput, additionalKeywords?: string): AsyncGenerator<string, void, unknown> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("未设置 API 密钥");
+  }
+
+  try {
+    // 1. Prepare Prompts (Same logic as non-stream version)
+    let safePrompts = prompts.map(p => {
+        let cleaned = p;
+        cleaned = cleaned.replace(/\b\d+\s*(yo|year\s*old|years\s*old)\b/gi, '');
+        cleaned = cleaned.replace(/\d+\s*岁([的之])?/g, '');
+        cleaned = cleaned.replace(/(一|二|三|四|五|六|七|八|九|十)+岁([的之])?/g, '');
+        cleaned = cleaned
+            .replace(/\s+/g, ' ')
+            .replace(/,\s*,/g, ',')
+            .replace(/^[,\s]+|[,\s]+$/g, '')
+            .trim();
+        return cleaned;
+    });
+
+    safePrompts = safePrompts.map(p => applyForbiddenWordsFilter(p));
+
+    let promptText = `提示词: ${safePrompts.join(', ')}`;
+    
+    if (additionalKeywords && additionalKeywords.trim()) {
+        const safeKeywords = applyForbiddenWordsFilter(additionalKeywords.trim());
+        promptText += `\n\n用户特别要求(必须重点体现): ${safeKeywords}`;
+    }
+
+    let contents: any = promptText;
+
+    if (image) {
+      contents = [
+        { text: promptText },
+        {
+          inlineData: {
+            mimeType: image.mimeType,
+            data: image.data
+          }
+        }
+      ];
+    }
+
+    const aiClient = getAiClient();
+    
+    try {
+        const result = await aiClient.models.generateContentStream({
+            model: 'gemini-3-flash-preview',
+            contents: contents,
+            config: {
+                systemInstruction: SYSTEM_INSTRUCTION,
+                temperature: 0.8,
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                ] as any[],
+            }
+        });
+
+        for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            if (chunkText) {
+                yield chunkText;
+            }
+        }
+    } catch (innerError: any) {
+        // Handle Fallback for PROHIBITED_CONTENT
+        // Note: For streaming, checking promptFeedback blockReason is tricky as it might be in the stream.
+        // But if generateContentStream throws immediately, we can catch it.
+        // Or if the first chunk contains block info.
+        
+        // Simply try fallback if error suggests blocking and we have an image
+        if (image && (innerError.message?.includes('PROHIBITED_CONTENT') || innerError.message?.includes('safety'))) {
+             console.log("=== [Stream] 检测到拦截，尝试降级策略（仅图片） ===");
+             const fallbackContents = [
+                {
+                  inlineData: {
+                    mimeType: image.mimeType,
+                    data: image.data
+                  }
+                }
+              ];
+              
+              const fallbackResult = await aiClient.models.generateContentStream({
+                model: 'gemini-3-flash-preview',
+                contents: fallbackContents,
+                config: {
+                  systemInstruction: SYSTEM_INSTRUCTION,
+                  temperature: 0.8,
+                  safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+                  ] as any[],
+                }
+              });
+
+              for await (const chunk of fallbackResult.stream) {
+                const chunkText = chunk.text();
+                if (chunkText) {
+                    yield chunkText;
+                }
+              }
+              yield "\n\n（提示词未通过）";
+        } else {
+            throw innerError;
+        }
+    }
+
+  } catch (error: any) {
+    console.error("Gemini Stream API Error:", error);
+    throw new Error(error.message || "通过 Gemini 生成故事失败。");
+  }
+};
