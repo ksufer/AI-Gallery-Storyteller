@@ -2,6 +2,86 @@
 
 本目录包含应用的配置文件。
 
+## ai-settings.json
+
+AI 服务配置文件，用于配置 API Key、模型选择和代理设置。**支持运行时热切换，无需重启服务器。**
+
+### 文件格式
+
+```json
+{
+  "provider": "gemini",
+  "gemini": {
+    "apiKey": "your-gemini-api-key",
+    "model": "gemini-3-flash-preview"
+  },
+  "openai": {
+    "apiKey": "your-openai-api-key",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o"
+  },
+  "proxy": {
+    "enabled": false,
+    "url": ""
+  }
+}
+```
+
+### 配置项说明
+
+| 配置项 | 说明 |
+|--------|------|
+| `provider` | 当前使用的 AI 服务，可选 `gemini` 或 `openai` |
+| `gemini.apiKey` | Google Gemini API 密钥 |
+| `gemini.model` | Gemini 模型名称（如 `gemini-3-flash-preview`） |
+| `openai.apiKey` | OpenAI 兼容 API 密钥 |
+| `openai.baseUrl` | API 端点（支持 OpenRouter、DeepSeek 等） |
+| `openai.model` | 模型名称（如 `gpt-4o`） |
+| `proxy.enabled` | 是否启用代理 |
+| `proxy.url` | 代理地址（如 `http://127.0.0.1:7890`） |
+
+### 配置优先级
+
+```
+config/ai-settings.json > .env.local > 默认值
+```
+
+- 首次使用时，会从 `.env.local` 读取环境变量作为初始配置
+- 通过设置界面保存后，配置会写入 `ai-settings.json`
+- 之后优先使用 `ai-settings.json` 中的配置
+
+### 使用方法
+
+**推荐方式**：通过设置界面配置（热切换，无需重启）
+1. 点击应用右上角的"设置"按钮
+2. 在"模型设置"标签页中配置 API Key、选择模型
+3. 点击"测试连接"验证配置
+4. 点击"保存设置"，配置立即生效
+
+**手动编辑**：
+1. 将 `ai-settings.example.json` 复制为 `ai-settings.json`
+2. 编辑配置并保存
+3. 刷新页面即可生效（无需重启服务器）
+
+### 安全注意事项
+
+- `ai-settings.json` 包含 API 密钥，已添加到 `.gitignore`
+- **请勿将此文件提交到版本控制系统**
+- 建议定期轮换 API 密钥
+
+### 调试
+
+应用启动时，控制台会显示：
+```
+✓ AI 配置已加载
+  - Provider: gemini
+  - Gemini Model: gemini-3-flash-preview
+  - OpenAI Model: gpt-4o
+  - Proxy: 禁用
+```
+
+---
+
 ## forbidden-words.json
 
 禁词替换表配置文件，用于在生成故事前自动替换提示词中的敏感词汇。

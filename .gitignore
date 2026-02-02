@@ -31,3 +31,4 @@ db/*
 
 # Config files (keep examples)
 config/system-prompt.json
+config/ai-settings.json
