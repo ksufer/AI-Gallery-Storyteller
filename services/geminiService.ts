@@ -185,7 +185,10 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
     if (additionalKeywords && additionalKeywords.trim()) {
         const safeKeywords = applyForbiddenWordsFilter(additionalKeywords.trim());
         promptText += `\n\n用户特别要求(必须重点体现): ${safeKeywords}`;
+        console.log(`[Gemini Story] Added user keywords: ${safeKeywords}`);
     }
+
+    console.log(`[Gemini Story] Final Prompt Text: ${promptText}`);
 
     let contents: any = promptText;
 

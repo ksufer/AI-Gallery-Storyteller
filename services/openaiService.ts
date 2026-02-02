@@ -184,7 +184,10 @@ export const generateStoryFromPrompts = async (
     if (additionalKeywords && additionalKeywords.trim()) {
         const safeKeywords = applyForbiddenWordsFilter(additionalKeywords.trim());
         promptText += `\n\n用户特别要求(必须重点体现): ${safeKeywords}`;
+        console.log(`[OpenAI Story] Added user keywords: ${safeKeywords}`);
     }
+
+    console.log(`[OpenAI Story] Final Prompt Text: ${promptText}`);
     
     // 检查模型是否支持视觉
     const hasVisionSupport = supportsVision();

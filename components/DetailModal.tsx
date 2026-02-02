@@ -102,7 +102,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     } finally {
       setIsGenerating(false);
     }
-  }, [image.id, onUpdateStory]);
+  }, [image.id, onUpdateStory, userKeywords]);
 
   const handleStorySave = () => {
      onUpdateStory(image.id, story);
@@ -307,12 +307,11 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                  ) : (
                      <div 
                         className="w-full h-full min-h-[300px] bg-black/30 border border-white/10 rounded-lg p-4 text-gray-300 text-sm leading-relaxed overflow-y-auto prose prose-invert prose-sm max-w-none"
-                        onClick={() => setIsEditingStory(true)}
                      >
                         {story ? (
                             <ReactMarkdown>{story}</ReactMarkdown>
                         ) : (
-                            <span className="text-gray-600 italic">点击此处或上方按钮开始编辑...</span>
+                            <span className="text-gray-600 italic">点击上方按钮开始编辑...</span>
                         )}
                      </div>
                  )}
