@@ -30,6 +30,4 @@ uploads/*
 db/*
 
 # Config files (keep examples)
-config/forbidden-words.json
-config/blocked-tags.json
 config/system-prompt.json
