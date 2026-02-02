@@ -346,7 +346,7 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
     const aiClient = getAiClient();
     
     try {
-        const result = await aiClient.models.generateContentStream({
+        const stream = await aiClient.models.generateContentStream({
             model: 'gemini-3-flash-preview',
             contents: contents,
             config: {
@@ -361,8 +361,8 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
             }
         });
 
-        for await (const chunk of result.stream) {
-            const chunkText = chunk.text();
+        for await (const chunk of stream) {
+            const chunkText = chunk.text;
             if (chunkText) {
                 yield chunkText;
             }
@@ -385,7 +385,7 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
                 }
               ];
               
-              const fallbackResult = await aiClient.models.generateContentStream({
+              const fallbackStream = await aiClient.models.generateContentStream({
                 model: 'gemini-3-flash-preview',
                 contents: fallbackContents,
                 config: {
@@ -400,8 +400,8 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
                 }
               });
 
-              for await (const chunk of fallbackResult.stream) {
-                const chunkText = chunk.text();
+              for await (const chunk of fallbackStream) {
+                const chunkText = chunk.text;
                 if (chunkText) {
                     yield chunkText;
                 }
