@@ -160,7 +160,7 @@ Content-Type: application/json
 
 ### 4. 与画中人对话
 
-以「画中角色」身份与用户多轮对话（需 `AI_PROVIDER=gemini`）。详见 [CHARACTER_CHAT.md](CHARACTER_CHAT.md)。
+以「画中角色」身份与用户多轮对话（支持 `AI_PROVIDER=gemini` 或 `openai`；OpenAI 需支持视觉的模型）。详见 [CHARACTER_CHAT.md](CHARACTER_CHAT.md)。
 
 **端点**: `POST /api/images/:id/chat`
 

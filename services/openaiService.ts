@@ -660,3 +660,102 @@ export const generateStoryStream = async function* (
     throw new Error(error.message || "通过 OpenAI 生成故事失败");
   }
 };
+
+/** 对话历史单条（与 Gemini 一致：model 表示助手回复） */
+export interface ChatHistoryItem {
+  role: 'user' | 'model';
+  text: string;
+}
+
+const CHAT_SYSTEM_INSTRUCTION = (story: string | undefined): string => {
+  const storyBlock = story && story.trim()
+    ? `以下是这幅画的背景故事：\n\n${story.trim()}`
+    : '（没有预设故事，请仅根据画面自由发挥，想象你是画中的角色。）';
+  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}\n\n请保持简短、有氛围，一两句话即可，不要脱离角色。`;
+};
+
+/**
+ * 以「画中角色」身份与用户多轮对话（OpenAI 兼容 API，需支持视觉的模型）
+ * @param image 图片 base64 + mimeType
+ * @param story 当前图片的故事文案，可为空
+ * @param userMessage 用户本条消息
+ * @param history 此前对话历史（user/model 交替）
+ * @returns 角色回复文本
+ */
+export const chatAsCharacter = async (params: {
+  image: ImageInput;
+  story: string | undefined;
+  userMessage: string;
+  history: ChatHistoryItem[];
+}): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("未设置 API 密钥，请在设置中配置 OpenAI API Key");
+  }
+
+  const { image, story, userMessage, history } = params;
+  const model = getModel();
+  const filteredMessage = applyForbiddenWordsFilter(userMessage.trim());
+  if (!filteredMessage) {
+    throw new Error("消息内容为空");
+  }
+
+  const hasVisionSupport = supportsVision();
+  if (!hasVisionSupport) {
+    throw new Error("当前模型不支持视觉，画中人对话需使用支持视觉的模型（如 gpt-4o）");
+  }
+
+  const systemInstruction = CHAT_SYSTEM_INSTRUCTION(story);
+  const openai = getClient();
+
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> }> = [
+    { role: 'system', content: systemInstruction },
+  ];
+
+  if (history.length === 0) {
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: `（请根据这张画与设定，以画中角色身份与我对话。）\n\n用户说：${filteredMessage}` },
+        { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}`, detail: 'high' } },
+      ],
+    });
+  } else {
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: '（请根据这张画与设定，以画中角色身份与我对话。以下是之前的对话。）' },
+        { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}`, detail: 'high' } },
+      ],
+    });
+    for (const item of history) {
+      const role = item.role === 'model' ? 'assistant' : 'user';
+      messages.push({ role, content: item.text });
+    }
+    messages.push({ role: 'user', content: filteredMessage });
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model,
+      messages,
+      temperature: 0.7,
+      max_tokens: 300,
+    });
+
+    const text = response.choices[0]?.message?.content;
+    if (text && typeof text === 'string') {
+      return text.trim();
+    }
+    return '（未能生成回复，请重试。）';
+  } catch (error: any) {
+    console.error("[OpenAI Chat] Error:", error);
+    if (error.status === 401) {
+      throw new Error("API 密钥无效");
+    }
+    if (error.status === 429) {
+      throw new Error("调用频率超限，请稍后再试");
+    }
+    throw new Error(error.message || "角色对话失败");
+  }
+};

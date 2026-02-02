@@ -283,19 +283,18 @@ app.post('/api/images/:id/chat', async (req, res) => {
             image.file_path.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
 
         const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
-        if (aiProvider !== 'gemini') {
-            return res.status(501).json({ error: "Chat as character is only supported with AI_PROVIDER=gemini" });
-        }
-
-        const { chatAsCharacter } = await import('../services/geminiService.js');
         const story = image.story || undefined;
+        const imagePayload = { data: base64Image, mimeType };
+        const chatPayload = { image: imagePayload, story, userMessage: message.trim(), history: safeHistory };
 
-        const reply = await chatAsCharacter({
-            image: { data: base64Image, mimeType },
-            story,
-            userMessage: message.trim(),
-            history: safeHistory,
-        });
+        let reply: string;
+        if (aiProvider === 'openai') {
+            const { chatAsCharacter } = await import('../services/openaiService.js');
+            reply = await chatAsCharacter(chatPayload);
+        } else {
+            const { chatAsCharacter } = await import('../services/geminiService.js');
+            reply = await chatAsCharacter(chatPayload);
+        }
 
         res.json({ reply });
     } catch (error: any) {
