@@ -1,22 +1,27 @@
 import { GoogleGenAI } from "@google/genai";
-import nodeFetch from 'node-fetch';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import fs from 'fs';
 import path from 'path';
+import { ProxyAgent } from 'undici';
 
-// Patch global fetch for proxy support if HTTPS_PROXY is set
+// Configure proxy for Gemini API if HTTPS_PROXY is set
+// Note: Node.js 18+ has built-in fetch (based on undici)
+// We need to use undici's ProxyAgent for proxy support with native fetch
+let fetchOptions: any = undefined;
+
 if (process.env.HTTPS_PROXY) {
     console.log(`Using proxy: ${process.env.HTTPS_PROXY}`);
-    const agent = new HttpsProxyAgent(process.env.HTTPS_PROXY);
+    const proxyAgent = new ProxyAgent(process.env.HTTPS_PROXY);
     
+    // Store original fetch
+    const originalFetch = globalThis.fetch;
+    
+    // Override global fetch with proxy support
     // @ts-ignore
-    global.fetch = (url, init) => {
-        // @ts-ignore
-        return nodeFetch(url, { 
-            ...init, 
-            agent,
-            // 增加超时设置，防止 socket 挂死
-            timeout: 30000 
+    globalThis.fetch = (url: string | URL | Request, init?: RequestInit) => {
+        return originalFetch(url, {
+            ...init,
+            // @ts-ignore
+            dispatcher: proxyAgent
         });
     };
 }
