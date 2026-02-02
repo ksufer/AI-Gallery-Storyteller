@@ -13,16 +13,56 @@ interface SystemPromptData {
   content: string;
 }
 
-type TabType = 'forbidden-words' | 'blocked-tags' | 'system-prompt';
+interface AISettings {
+  provider: 'gemini' | 'openai';
+  gemini: {
+    apiKey: string;
+    maskedKey: string;
+    model: string;
+    hasKey: boolean;
+  };
+  openai: {
+    apiKey: string;
+    maskedKey: string;
+    baseUrl: string;
+    model: string;
+    hasKey: boolean;
+  };
+  proxy: {
+    enabled: boolean;
+    url: string;
+  };
+}
+
+interface ModelOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+type TabType = 'ai-settings' | 'forbidden-words' | 'blocked-tags' | 'system-prompt';
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('forbidden-words');
+  const [activeTab, setActiveTab] = useState<TabType>('ai-settings');
   const [words, setWords] = useState<ForbiddenWords>({});
   const [blockedTags, setBlockedTags] = useState<string[]>([]);
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // AI Settings state
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const [editingGeminiKey, setEditingGeminiKey] = useState<string>('');
+  const [editingOpenaiKey, setEditingOpenaiKey] = useState<string>('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [geminiModels, setGeminiModels] = useState<ModelOption[]>([]);
+  const [openaiModels, setOpenaiModels] = useState<ModelOption[]>([]);
+  const [loadingGeminiModels, setLoadingGeminiModels] = useState(false);
+  const [loadingOpenaiModels, setLoadingOpenaiModels] = useState(false);
+  const [testingConnection, setTestingConnection] = useState<'gemini' | 'openai' | null>(null);
+  const [connectionResult, setConnectionResult] = useState<{ provider: string; success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (activeTab === 'forbidden-words') {
@@ -31,6 +71,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       fetchBlockedTags();
     } else if (activeTab === 'system-prompt') {
       fetchSystemPrompt();
+    } else if (activeTab === 'ai-settings') {
+      fetchAiSettings();
     }
   }, [activeTab]);
 
@@ -41,6 +83,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
+
+  const fetchAiSettings = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/settings/ai');
+      const result = await response.json();
+      
+      if (result.success) {
+        setAiSettings(result.data);
+        setEditingGeminiKey('');
+        setEditingOpenaiKey('');
+      } else {
+        setMessage({ text: `加载失败: ${result.error}`, type: 'error' });
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch AI settings:', error);
+      setMessage({ text: `加载失败: ${error.message}`, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchForbiddenWords = async () => {
     setIsLoading(true);
@@ -99,12 +162,139 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     }
   };
 
+  const fetchGeminiModels = async (apiKey?: string) => {
+    setLoadingGeminiModels(true);
+    try {
+      const response = await fetch('/api/models/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: apiKey || editingGeminiKey || undefined })
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        setGeminiModels(result.data || []);
+      } else {
+        setMessage({ text: `获取模型列表失败: ${result.error}`, type: 'error' });
+      }
+    } catch (error: any) {
+      setMessage({ text: `获取模型列表失败: ${error.message}`, type: 'error' });
+    } finally {
+      setLoadingGeminiModels(false);
+    }
+  };
+
+  const fetchOpenaiModels = async (apiKey?: string, baseUrl?: string) => {
+    setLoadingOpenaiModels(true);
+    try {
+      const response = await fetch('/api/models/openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          apiKey: apiKey || editingOpenaiKey || undefined,
+          baseUrl: baseUrl || aiSettings?.openai.baseUrl || undefined
+        })
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        setOpenaiModels(result.data || []);
+      } else {
+        setMessage({ text: `获取模型列表失败: ${result.error}`, type: 'error' });
+      }
+    } catch (error: any) {
+      setMessage({ text: `获取模型列表失败: ${error.message}`, type: 'error' });
+    } finally {
+      setLoadingOpenaiModels(false);
+    }
+  };
+
+  const testConnection = async (provider: 'gemini' | 'openai') => {
+    setTestingConnection(provider);
+    setConnectionResult(null);
+    
+    try {
+      const body: any = { provider };
+      
+      if (provider === 'gemini') {
+        if (editingGeminiKey) {
+          body.apiKey = editingGeminiKey;
+        }
+      } else {
+        if (editingOpenaiKey) {
+          body.apiKey = editingOpenaiKey;
+        }
+        if (aiSettings?.openai.baseUrl) {
+          body.baseUrl = aiSettings.openai.baseUrl;
+        }
+      }
+      
+      const response = await fetch('/api/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const result = await response.json();
+      
+      setConnectionResult({
+        provider,
+        success: result.success,
+        message: result.message + (result.model ? ` (${result.model})` : '')
+      });
+    } catch (error: any) {
+      setConnectionResult({
+        provider,
+        success: false,
+        message: error.message || '连接测试失败'
+      });
+    } finally {
+      setTestingConnection(null);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     setMessage(null);
 
     try {
-      if (activeTab === 'forbidden-words') {
+      if (activeTab === 'ai-settings' && aiSettings) {
+        const updateData: any = {
+          provider: aiSettings.provider,
+          gemini: {
+            model: aiSettings.gemini.model
+          },
+          openai: {
+            baseUrl: aiSettings.openai.baseUrl,
+            model: aiSettings.openai.model
+          },
+          proxy: aiSettings.proxy
+        };
+        
+        // Only include API keys if they were edited
+        if (editingGeminiKey) {
+          updateData.gemini.apiKey = editingGeminiKey;
+        }
+        if (editingOpenaiKey) {
+          updateData.openai.apiKey = editingOpenaiKey;
+        }
+        
+        const response = await fetch('/api/settings/ai', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setMessage({ text: 'AI 设置已保存！配置已立即生效。', type: 'success' });
+          // Refresh settings to get updated masked keys
+          await fetchAiSettings();
+          setTimeout(() => setMessage(null), 3000);
+        } else {
+          setMessage({ text: `保存失败: ${result.error}`, type: 'error' });
+        }
+      } else if (activeTab === 'forbidden-words') {
         const response = await fetch('/api/settings/forbidden-words', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -194,6 +384,275 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setBlockedTags(blockedTags.filter((_, i) => i !== index));
   };
 
+  // Render AI Settings Tab
+  const renderAiSettingsTab = () => {
+    if (!aiSettings) return null;
+
+    return (
+      <div className="space-y-6">
+        {/* Provider Selection */}
+        <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+          <h4 className="text-sm font-semibold text-white mb-3">AI 服务提供商</h4>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="provider"
+                value="gemini"
+                checked={aiSettings.provider === 'gemini'}
+                onChange={() => setAiSettings({ ...aiSettings, provider: 'gemini' })}
+                className="w-4 h-4 text-cyan-500 bg-black/40 border-white/20 focus:ring-cyan-500"
+              />
+              <span className="text-gray-300">Google Gemini</span>
+              <span className="text-xs text-gray-500">(默认)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="provider"
+                value="openai"
+                checked={aiSettings.provider === 'openai'}
+                onChange={() => setAiSettings({ ...aiSettings, provider: 'openai' })}
+                className="w-4 h-4 text-purple-500 bg-black/40 border-white/20 focus:ring-purple-500"
+              />
+              <span className="text-gray-300">OpenAI 兼容</span>
+              <span className="text-xs text-gray-500">(OpenRouter, DeepSeek 等)</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Gemini Settings */}
+        <div className={`p-4 border rounded-lg transition-all ${
+          aiSettings.provider === 'gemini' 
+            ? 'bg-cyan-500/10 border-cyan-500/30' 
+            : 'bg-white/5 border-white/10 opacity-60'
+        }`}>
+          <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <span>Gemini 设置</span>
+            {aiSettings.gemini.hasKey && (
+              <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded">已配置</span>
+            )}
+          </h4>
+          
+          <div className="space-y-3">
+            {/* API Key */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">API Key</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showGeminiKey ? 'text' : 'password'}
+                    value={editingGeminiKey || (showGeminiKey ? '' : aiSettings.gemini.maskedKey)}
+                    onChange={(e) => setEditingGeminiKey(e.target.value)}
+                    placeholder={aiSettings.gemini.hasKey ? '输入新 Key 以更换' : '输入 Gemini API Key'}
+                    className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50 font-mono"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs text-gray-400"
+                >
+                  {showGeminiKey ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+
+            {/* Model Selection */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">模型</label>
+              <div className="flex gap-2">
+                <select
+                  value={aiSettings.gemini.model}
+                  onChange={(e) => setAiSettings({
+                    ...aiSettings,
+                    gemini: { ...aiSettings.gemini, model: e.target.value }
+                  })}
+                  className="flex-1 bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50"
+                >
+                  <option value={aiSettings.gemini.model}>{aiSettings.gemini.model}</option>
+                  {geminiModels.filter(m => m.id !== aiSettings.gemini.model).map(model => (
+                    <option key={model.id} value={model.id}>{model.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => fetchGeminiModels()}
+                  disabled={loadingGeminiModels}
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs text-gray-400 disabled:opacity-50"
+                >
+                  {loadingGeminiModels ? '加载中...' : '刷新列表'}
+                </button>
+              </div>
+            </div>
+
+            {/* Test Connection */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => testConnection('gemini')}
+                disabled={testingConnection === 'gemini'}
+                className="px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded text-sm text-cyan-400 disabled:opacity-50"
+              >
+                {testingConnection === 'gemini' ? '测试中...' : '测试连接'}
+              </button>
+              {connectionResult?.provider === 'gemini' && (
+                <span className={`text-sm ${connectionResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                  {connectionResult.message}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* OpenAI Settings */}
+        <div className={`p-4 border rounded-lg transition-all ${
+          aiSettings.provider === 'openai' 
+            ? 'bg-purple-500/10 border-purple-500/30' 
+            : 'bg-white/5 border-white/10 opacity-60'
+        }`}>
+          <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <span>OpenAI 兼容设置</span>
+            {aiSettings.openai.hasKey && (
+              <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded">已配置</span>
+            )}
+          </h4>
+          
+          <div className="space-y-3">
+            {/* API Key */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">API Key</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showOpenaiKey ? 'text' : 'password'}
+                    value={editingOpenaiKey || (showOpenaiKey ? '' : aiSettings.openai.maskedKey)}
+                    onChange={(e) => setEditingOpenaiKey(e.target.value)}
+                    placeholder={aiSettings.openai.hasKey ? '输入新 Key 以更换' : '输入 API Key'}
+                    className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50 font-mono"
+                  />
+                </div>
+                <button
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs text-gray-400"
+                >
+                  {showOpenaiKey ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </div>
+
+            {/* Base URL */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Base URL</label>
+              <input
+                type="text"
+                value={aiSettings.openai.baseUrl}
+                onChange={(e) => setAiSettings({
+                  ...aiSettings,
+                  openai: { ...aiSettings.openai, baseUrl: e.target.value }
+                })}
+                placeholder="https://api.openai.com/v1"
+                className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50 font-mono"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                OpenRouter: https://openrouter.ai/api/v1 | DeepSeek: https://api.deepseek.com
+              </p>
+            </div>
+
+            {/* Model Selection */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">模型</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiSettings.openai.model}
+                  onChange={(e) => setAiSettings({
+                    ...aiSettings,
+                    openai: { ...aiSettings.openai, model: e.target.value }
+                  })}
+                  placeholder="gpt-4o"
+                  className="flex-1 bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-purple-500/50 font-mono"
+                  list="openai-models"
+                />
+                <datalist id="openai-models">
+                  {openaiModels.map(model => (
+                    <option key={model.id} value={model.id} />
+                  ))}
+                </datalist>
+                <button
+                  onClick={() => fetchOpenaiModels()}
+                  disabled={loadingOpenaiModels}
+                  className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded text-xs text-gray-400 disabled:opacity-50"
+                >
+                  {loadingOpenaiModels ? '加载中...' : '获取列表'}
+                </button>
+              </div>
+            </div>
+
+            {/* Test Connection */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => testConnection('openai')}
+                disabled={testingConnection === 'openai'}
+                className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded text-sm text-purple-400 disabled:opacity-50"
+              >
+                {testingConnection === 'openai' ? '测试中...' : '测试连接'}
+              </button>
+              {connectionResult?.provider === 'openai' && (
+                <span className={`text-sm ${connectionResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                  {connectionResult.message}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Proxy Settings */}
+        <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+          <h4 className="text-sm font-semibold text-white mb-3">代理设置</h4>
+          
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiSettings.proxy.enabled}
+                onChange={(e) => setAiSettings({
+                  ...aiSettings,
+                  proxy: { ...aiSettings.proxy, enabled: e.target.checked }
+                })}
+                className="w-4 h-4 text-cyan-500 bg-black/40 border-white/20 rounded focus:ring-cyan-500"
+              />
+              <span className="text-gray-300 text-sm">启用代理</span>
+            </label>
+
+            {aiSettings.proxy.enabled && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">代理地址</label>
+                <input
+                  type="text"
+                  value={aiSettings.proxy.url}
+                  onChange={(e) => setAiSettings({
+                    ...aiSettings,
+                    proxy: { ...aiSettings.proxy, url: e.target.value }
+                  })}
+                  placeholder="http://127.0.0.1:7890"
+                  className="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-cyan-500/50 font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  提示：国内访问 Gemini API 需要配置代理。常用端口：Clash (7890), v2ray (10809)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Info Box */}
+        <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+          <p className="text-sm text-blue-400">
+            修改后点击"保存设置"即可生效，无需重启服务器。
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -221,10 +680,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           </div>
           
           {/* Tabs */}
-          <div className="flex gap-1 px-6">
+          <div className="flex gap-1 px-6 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('ai-settings')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
+                activeTab === 'ai-settings'
+                  ? 'bg-[#18181b] text-white border-t-2 border-blue-500'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              模型设置
+            </button>
             <button
               onClick={() => setActiveTab('forbidden-words')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === 'forbidden-words'
                   ? 'bg-[#18181b] text-white border-t-2 border-cyan-500'
                   : 'text-gray-500 hover:text-gray-300'
@@ -234,7 +703,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
             <button
               onClick={() => setActiveTab('blocked-tags')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === 'blocked-tags'
                   ? 'bg-[#18181b] text-white border-t-2 border-purple-500'
                   : 'text-gray-500 hover:text-gray-300'
@@ -244,7 +713,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             </button>
             <button
               onClick={() => setActiveTab('system-prompt')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${
                 activeTab === 'system-prompt'
                   ? 'bg-[#18181b] text-white border-t-2 border-green-500'
                   : 'text-gray-500 hover:text-gray-300'
@@ -261,6 +730,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             <div className="flex justify-center items-center h-full">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
             </div>
+          ) : activeTab === 'ai-settings' ? (
+            renderAiSettingsTab()
           ) : activeTab === 'forbidden-words' ? (
             <div className="space-y-2">
               
@@ -270,7 +741,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   配置禁词替换表，在生成故事前自动替换提示词中的敏感词汇。例如："少女" → "美女"
                 </p>
                 <p className="text-xs text-blue-400/70 mt-2">
-                  💡 修改后保存即可生效，无需重启服务器（刷新页面即可）
+                  修改后保存即可生效，无需重启服务器（刷新页面即可）
                 </p>
               </div>
 
@@ -323,7 +794,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   配置标签屏蔽列表，在从图片元数据提取标签时自动过滤无意义的标签（如图像质量词、镜头词等）
                 </p>
                 <p className="text-xs text-purple-400/70 mt-2">
-                  💡 修改后保存即可生效，无需重启服务器。仅对新导入的图片有效
+                  修改后保存即可生效，无需重启服务器。仅对新导入的图片有效
                 </p>
               </div>
 
@@ -375,7 +846,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   配置 AI 生成故事时使用的系统提示词（System Prompt）。这将直接影响生成内容的风格和质量。
                 </p>
                 <p className="text-xs text-green-400/70 mt-2">
-                  💡 修改后保存即可生效，无需重启服务器
+                  修改后保存即可生效，无需重启服务器
                 </p>
               </div>
 
