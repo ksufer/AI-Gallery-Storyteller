@@ -2,49 +2,124 @@ import { GoogleGenAI } from "@google/genai";
 import fs from 'fs';
 import path from 'path';
 import { ProxyAgent } from 'undici';
+import { 
+  getAiConfig, 
+  registerGeminiReinitCallback,
+  type GeminiConfig 
+} from './aiConfigService.js';
 
-// Configure proxy for Gemini API if HTTPS_PROXY is set
-// Note: Node.js 18+ has built-in fetch (based on undici)
-// We need to use undici's ProxyAgent for proxy support with native fetch
-let fetchOptions: any = undefined;
+// 代理相关配置
+let currentProxyUrl: string | undefined = undefined;
+let originalFetch: typeof globalThis.fetch | null = null;
 
-if (process.env.HTTPS_PROXY) {
-    console.log(`Using proxy: ${process.env.HTTPS_PROXY}`);
-    const proxyAgent = new ProxyAgent(process.env.HTTPS_PROXY);
+/**
+ * 配置代理
+ */
+function setupProxy(proxyUrl?: string): void {
+  // 如果代理 URL 没有变化，不需要重新配置
+  if (proxyUrl === currentProxyUrl) {
+    return;
+  }
+  
+  // 恢复原始 fetch（如果之前被覆盖过）
+  if (originalFetch) {
+    globalThis.fetch = originalFetch;
+  } else {
+    originalFetch = globalThis.fetch;
+  }
+  
+  currentProxyUrl = proxyUrl;
+  
+  if (proxyUrl) {
+    console.log(`[Gemini] 配置代理: ${proxyUrl}`);
+    const proxyAgent = new ProxyAgent(proxyUrl);
     
-    // Store original fetch
-    const originalFetch = globalThis.fetch;
-    
-    // Override global fetch with proxy support
     // @ts-ignore
     globalThis.fetch = (url: string | URL | Request, init?: RequestInit) => {
-        return originalFetch(url, {
-            ...init,
-            // @ts-ignore
-            dispatcher: proxyAgent
-        });
+      return originalFetch!(url, {
+        ...init,
+        // @ts-ignore
+        dispatcher: proxyAgent
+      });
     };
+  } else {
+    console.log('[Gemini] 代理已禁用');
+  }
 }
 
-// Initialize Gemini Client
-// We use lazy initialization to allow the server to start even if API_KEY is missing.
+// Gemini 客户端实例
 let ai: GoogleGenAI | null = null;
 
-const getApiKey = () => {
-    return process.env.GEMINI_API_KEY || process.env.API_KEY;
+// 当前使用的配置
+let currentApiKey: string = '';
+let currentModel: string = 'gemini-3-flash-preview';
+
+/**
+ * 获取 API Key（优先从 aiConfigService，然后从环境变量）
+ */
+const getApiKey = (): string => {
+  const config = getAiConfig();
+  return config.gemini.apiKey || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
 };
 
-const getAiClient = () => {
-  if (!ai) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      // Should acturally be handled by the caller, but just in case
-      throw new Error("未设置 API 密钥");
-    }
-    ai = new GoogleGenAI({ apiKey });
+/**
+ * 获取当前模型
+ */
+const getModel = (): string => {
+  const config = getAiConfig();
+  return config.gemini.model || currentModel;
+};
+
+/**
+ * 获取或创建 Gemini 客户端
+ */
+const getAiClient = (): GoogleGenAI => {
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    throw new Error("未设置 Gemini API 密钥");
   }
+  
+  // 如果 API Key 发生变化，重新创建客户端
+  if (!ai || apiKey !== currentApiKey) {
+    ai = new GoogleGenAI({ apiKey });
+    currentApiKey = apiKey;
+    console.log('[Gemini] 客户端已初始化');
+  }
+  
   return ai;
 };
+
+/**
+ * 重新初始化 Gemini 服务
+ * 用于支持热切换 API Key、模型和代理
+ */
+export function reinitialize(config: GeminiConfig, proxyUrl?: string): void {
+  console.log('[Gemini] 正在重新初始化服务...');
+  
+  // 重新配置代理
+  setupProxy(proxyUrl);
+  
+  // 更新模型配置
+  currentModel = config.model || 'gemini-3-flash-preview';
+  
+  // 如果 API Key 发生变化，清除现有客户端
+  if (config.apiKey && config.apiKey !== currentApiKey) {
+    ai = null;
+    currentApiKey = '';
+  }
+  
+  // 重新加载系统提示词
+  loadSystemPrompt();
+  
+  // 重新加载禁词表
+  loadForbiddenWords();
+  
+  console.log(`[Gemini] 服务已重新初始化 (模型: ${currentModel})`);
+}
+
+// 注册重新初始化回调
+registerGeminiReinitCallback(reinitialize);
 
 // 禁词表 - 从外部配置文件加载
 let FORBIDDEN_WORDS_MAP: Record<string, string> = {};
@@ -53,18 +128,18 @@ let FORBIDDEN_WORDS_MAP: Record<string, string> = {};
 let SYSTEM_INSTRUCTION = '';
 
 // 异步加载禁词表配置
-const loadForbiddenWords = async (): Promise<void> => {
+const loadForbiddenWords = (): void => {
   try {
     const configPath = path.join(process.cwd(), 'config', 'forbidden-words.json');
     if (!fs.existsSync(configPath)) {
-       console.warn('⚠ 禁词表文件不存在:', configPath);
+       console.warn('⚠ [Gemini] 禁词表文件不存在:', configPath);
        return;
     }
     const fileContent = fs.readFileSync(configPath, 'utf-8');
     FORBIDDEN_WORDS_MAP = JSON.parse(fileContent);
-    console.log(`✓ 已加载禁词表: ${Object.keys(FORBIDDEN_WORDS_MAP).length} 个词汇`);
+    console.log(`✓ [Gemini] 已加载禁词表: ${Object.keys(FORBIDDEN_WORDS_MAP).length} 个词汇`);
   } catch (error) {
-    console.warn('⚠ 无法加载禁词表配置文件，将使用空的禁词表');
+    console.warn('⚠ [Gemini] 无法加载禁词表配置文件，将使用空的禁词表');
     console.warn(`错误详情: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
@@ -77,20 +152,20 @@ const loadSystemPrompt = (): void => {
     
     // 如果配置文件不存在，尝试从示例文件复制
     if (!fs.existsSync(configPath)) {
-      console.log('⚠ 系统提示词文件不存在，尝试从示例文件创建...');
+      console.log('⚠ [Gemini] 系统提示词文件不存在，尝试从示例文件创建...');
       
       if (fs.existsSync(examplePath)) {
         try {
           fs.copyFileSync(examplePath, configPath);
-          console.log('✓ 已从示例文件创建 system-prompt.json');
+          console.log('✓ [Gemini] 已从示例文件创建 system-prompt.json');
         } catch (copyError) {
-          console.warn('⚠ 无法复制示例文件:', copyError instanceof Error ? copyError.message : String(copyError));
+          console.warn('⚠ [Gemini] 无法复制示例文件:', copyError instanceof Error ? copyError.message : String(copyError));
         }
       }
       
       // 如果复制失败或示例文件不存在，使用默认提示词
       if (!fs.existsSync(configPath)) {
-        console.warn('⚠ 使用默认提示词');
+        console.warn('⚠ [Gemini] 使用默认提示词');
         SYSTEM_INSTRUCTION = '你是一位擅长视觉美学与叙事艺术的"沉浸式微小说家"。根据画面和提示词创作简短的故事。';
         return;
       }
@@ -99,17 +174,30 @@ const loadSystemPrompt = (): void => {
     const fileContent = fs.readFileSync(configPath, 'utf-8');
     const config = JSON.parse(fileContent);
     SYSTEM_INSTRUCTION = config.content || '';
-    console.log(`✓ 已加载系统提示词 (${SYSTEM_INSTRUCTION.length} 字符)`);
+    console.log(`✓ [Gemini] 已加载系统提示词 (${SYSTEM_INSTRUCTION.length} 字符)`);
   } catch (error) {
-    console.warn('⚠ 无法加载系统提示词配置文件，将使用默认提示词');
+    console.warn('⚠ [Gemini] 无法加载系统提示词配置文件，将使用默认提示词');
     console.warn(`错误详情: ${error instanceof Error ? error.message : String(error)}`);
     SYSTEM_INSTRUCTION = '你是一位擅长视觉美学与叙事艺术的"沉浸式微小说家"。根据画面和提示词创作简短的故事。';
   }
 };
 
-// 在模块加载时立即加载配置
-loadForbiddenWords();
-loadSystemPrompt();
+// 初始化时配置代理和加载配置
+const initializeService = (): void => {
+  const config = getAiConfig();
+  
+  // 配置代理
+  if (config.proxy.enabled && config.proxy.url) {
+    setupProxy(config.proxy.url);
+  }
+  
+  // 加载配置
+  loadForbiddenWords();
+  loadSystemPrompt();
+};
+
+// 在模块加载时立即初始化
+initializeService();
 
 /**
  * 重新加载系统提示词（用于支持热更新）
@@ -119,7 +207,7 @@ export const reloadSystemPrompt = (): boolean => {
     loadSystemPrompt();
     return true;
   } catch (error) {
-    console.error('重新加载系统提示词失败:', error);
+    console.error('[Gemini] 重新加载系统提示词失败:', error);
     return false;
   }
 };
@@ -149,11 +237,106 @@ const applyForbiddenWordsFilter = (text: string): string => {
   return filtered;
 };
 
+/**
+ * 获取 Gemini 可用模型列表
+ */
+export async function listModels(apiKey?: string): Promise<Array<{ id: string; name: string; description?: string }>> {
+  const key = apiKey || getApiKey();
+  
+  if (!key) {
+    throw new Error("未设置 Gemini API 密钥");
+  }
+  
+  try {
+    const tempClient = new GoogleGenAI({ apiKey: key });
+    const response = await tempClient.models.list();
+    
+    const models: Array<{ id: string; name: string; description?: string }> = [];
+    
+    // @ts-ignore - response 可能是异步迭代器
+    for await (const model of response) {
+      // 只返回支持生成内容的模型
+      // @ts-ignore - supportedGenerationMethods 在运行时存在但类型定义可能不完整
+      const supportedMethods = model.supportedGenerationMethods as string[] | undefined;
+      if (model.name && (!supportedMethods || supportedMethods.includes('generateContent'))) {
+        models.push({
+          id: model.name.replace('models/', ''),
+          name: model.displayName || model.name.replace('models/', ''),
+          description: model.description
+        });
+      }
+    }
+    
+    // 按名称排序，优先显示 Gemini 3 系列
+    models.sort((a, b) => {
+      if (a.id.includes('gemini-3') && !b.id.includes('gemini-3')) return -1;
+      if (!a.id.includes('gemini-3') && b.id.includes('gemini-3')) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    
+    return models;
+  } catch (error: any) {
+    console.error('[Gemini] 获取模型列表失败:', error);
+    throw new Error(error.message || "获取 Gemini 模型列表失败");
+  }
+}
+
+/**
+ * 测试 Gemini API 连通性
+ */
+export async function testConnection(apiKey?: string): Promise<{ success: boolean; message: string; model?: string }> {
+  const key = apiKey || getApiKey();
+  
+  if (!key) {
+    return { success: false, message: "未设置 API 密钥" };
+  }
+  
+  try {
+    const tempClient = new GoogleGenAI({ apiKey: key });
+    const model = getModel();
+    
+    // 尝试发送一个简单的请求
+    const response = await tempClient.models.generateContent({
+      model,
+      contents: "Hello, respond with just 'OK' in one word.",
+      config: {
+        maxOutputTokens: 10
+      }
+    });
+    
+    if (response.text) {
+      return { 
+        success: true, 
+        message: "连接成功",
+        model 
+      };
+    } else {
+      return { success: false, message: "API 返回空响应" };
+    }
+  } catch (error: any) {
+    console.error('[Gemini] 连接测试失败:', error);
+    
+    // 解析错误信息
+    let message = error.message || "连接失败";
+    if (error.status === 401 || message.includes('401')) {
+      message = "API 密钥无效";
+    } else if (error.status === 403 || message.includes('403')) {
+      message = "API 访问被拒绝，请检查密钥权限或代理设置";
+    } else if (message.includes('fetch') || message.includes('network')) {
+      message = "网络连接失败，请检查代理设置";
+    }
+    
+    return { success: false, message };
+  }
+}
+
 export const generateStoryFromPrompts = async (prompts: string[], image?: ImageInput, additionalKeywords?: string): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error("未设置 API 密钥，请配置 process.env.GEMINI_API_KEY 或 .env.local 中的 GEMINI_API_KEY");
+    throw new Error("未设置 API 密钥，请在设置中配置 Gemini API Key");
   }
+
+  const model = getModel();
 
   try {
     // 过滤掉年龄相关的提示词，以避免触发安全过滤器
@@ -193,7 +376,7 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
         console.log(`[Gemini Story] Added user keywords: ${safeKeywords}`);
     }
 
-    console.log(`[Gemini Story] Final Prompt Text: ${promptText}`);
+    console.log(`[Gemini Story] Model: ${model}, Prompt: ${promptText.substring(0, 100)}...`);
 
     let contents: any = promptText;
 
@@ -211,7 +394,7 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
 
     const aiClient = getAiClient();
     const response = await aiClient.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model,
       contents: contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -266,7 +449,7 @@ export const generateStoryFromPrompts = async (prompts: string[], image?: ImageI
           ];
           
           const fallbackResponse = await aiClient.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model,
             contents: fallbackContents,
             config: {
               systemInstruction: SYSTEM_INSTRUCTION,
@@ -310,6 +493,8 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
     throw new Error("未设置 API 密钥");
   }
 
+  const model = getModel();
+
   try {
     // 1. Prepare Prompts (Same logic as non-stream version)
     let safePrompts = prompts.map(p => {
@@ -352,7 +537,7 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
     
     try {
         const stream = await aiClient.models.generateContentStream({
-            model: 'gemini-3-flash-preview',
+            model,
             contents: contents,
             config: {
                 systemInstruction: SYSTEM_INSTRUCTION,
@@ -391,7 +576,7 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
               ];
               
               const fallbackStream = await aiClient.models.generateContentStream({
-                model: 'gemini-3-flash-preview',
+                model,
                 contents: fallbackContents,
                 config: {
                   systemInstruction: SYSTEM_INSTRUCTION,

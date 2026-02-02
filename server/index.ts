@@ -766,6 +766,108 @@ app.post('/api/settings/blocked-tags/reload', (req, res) => {
     }
 });
 
+// ============================================
+// AI Settings API
+// ============================================
+
+// Get AI settings (API keys masked)
+app.get('/api/settings/ai', async (req, res) => {
+    try {
+        const { getAiConfigForClient } = await import('../services/aiConfigService.js');
+        const config = getAiConfigForClient();
+        res.json({ success: true, data: config });
+    } catch (error: any) {
+        console.error("Get AI Settings API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to read AI settings" });
+    }
+});
+
+// Update AI settings
+app.put('/api/settings/ai', async (req, res) => {
+    try {
+        const { mergePartialConfig, saveAiConfig } = await import('../services/aiConfigService.js');
+        
+        const partialConfig = req.body;
+        
+        // Validate provider
+        if (partialConfig.provider && !['gemini', 'openai'].includes(partialConfig.provider)) {
+            return res.status(400).json({ success: false, error: "Invalid provider. Must be 'gemini' or 'openai'" });
+        }
+        
+        // Merge with existing config
+        const newConfig = mergePartialConfig(partialConfig);
+        
+        // Save config
+        const saved = await saveAiConfig(newConfig);
+        
+        if (saved) {
+            res.json({ 
+                success: true, 
+                message: "AI settings updated and services reloaded"
+            });
+        } else {
+            res.status(500).json({ success: false, error: "Failed to save AI settings" });
+        }
+    } catch (error: any) {
+        console.error("Update AI Settings API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to update AI settings" });
+    }
+});
+
+// Get Gemini models list
+app.post('/api/models/gemini', async (req, res) => {
+    try {
+        const { apiKey } = req.body;
+        const { listModels } = await import('../services/geminiService.js');
+        
+        const models = await listModels(apiKey);
+        res.json({ success: true, data: models });
+    } catch (error: any) {
+        console.error("Get Gemini Models API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to fetch Gemini models" });
+    }
+});
+
+// Get OpenAI compatible models list
+app.post('/api/models/openai', async (req, res) => {
+    try {
+        const { apiKey, baseUrl } = req.body;
+        const { listModels } = await import('../services/openaiService.js');
+        
+        const models = await listModels(apiKey, baseUrl);
+        res.json({ success: true, data: models });
+    } catch (error: any) {
+        console.error("Get OpenAI Models API Error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to fetch OpenAI models" });
+    }
+});
+
+// Test API connection
+app.post('/api/test-connection', async (req, res) => {
+    try {
+        const { provider, apiKey, baseUrl } = req.body;
+        
+        if (!provider || !['gemini', 'openai'].includes(provider)) {
+            return res.status(400).json({ success: false, error: "Invalid provider" });
+        }
+        
+        let result: { success: boolean; message: string; model?: string };
+        
+        if (provider === 'gemini') {
+            const { testConnection } = await import('../services/geminiService.js');
+            result = await testConnection(apiKey);
+        } else {
+            const { testConnection } = await import('../services/openaiService.js');
+            result = await testConnection(apiKey, baseUrl);
+        }
+        
+        res.json(result);
+    } catch (error: any) {
+        console.error("Test Connection API Error:", error);
+        res.status(500).json({ success: false, message: error.message || "Connection test failed" });
+    }
+});
+
 // Get folders list
 app.get('/api/folders', async (req, res) => {
     try {

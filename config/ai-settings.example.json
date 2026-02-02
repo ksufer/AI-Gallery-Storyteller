@@ -1,0 +1,16 @@
+{
+  "provider": "gemini",
+  "gemini": {
+    "apiKey": "",
+    "model": "gemini-3-flash-preview"
+  },
+  "openai": {
+    "apiKey": "",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o"
+  },
+  "proxy": {
+    "enabled": false,
+    "url": ""
+  }
+}
