@@ -607,3 +607,108 @@ export const generateStoryStream = async function* (prompts: string[], image?: I
     throw new Error(error.message || "通过 Gemini 生成故事失败。");
   }
 };
+
+/** 对话历史单条 */
+export interface ChatHistoryItem {
+  role: 'user' | 'model';
+  text: string;
+}
+
+const CHAT_SYSTEM_INSTRUCTION = (story: string | undefined): string => {
+  const storyBlock = story && story.trim()
+    ? `以下是这幅画的背景故事：\n\n${story.trim()}`
+    : '（没有预设故事，请仅根据画面自由发挥，想象你是画中的角色。）';
+  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}\n\n请保持简短、有氛围，一两句话即可，不要脱离角色。`;
+};
+
+/**
+ * 以「画中角色」身份与用户多轮对话（无状态：每次请求携带完整 history）
+ * @param image 图片 base64 + mimeType
+ * @param story 当前图片的故事文案，可为空（仅看图对话）
+ * @param userMessage 用户本条消息
+ * @param history 此前对话历史（user/model 交替），最多建议 20 条
+ * @returns 角色回复文本
+ */
+export const chatAsCharacter = async (params: {
+  image: ImageInput;
+  story: string | undefined;
+  userMessage: string;
+  history: ChatHistoryItem[];
+}): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("未设置 API 密钥，请在设置中配置 Gemini API Key");
+  }
+
+  const { image, story, userMessage, history } = params;
+  const model = getModel();
+  const filteredMessage = applyForbiddenWordsFilter(userMessage.trim());
+  if (!filteredMessage) {
+    throw new Error("消息内容为空");
+  }
+
+  const systemInstruction = CHAT_SYSTEM_INSTRUCTION(story);
+
+  // 多轮 contents：首条 user 带图片；无 history 时合并为单条（图片+用户说），有 history 时追加交替 user/model，最后追加本条 user
+  const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> = [];
+
+  if (history.length === 0) {
+    // 无历史：单条 user（图片 + 用户首句），避免连续两条 user
+    contents.push({
+      role: 'user',
+      parts: [
+        { text: `（请根据这张画与设定，以画中角色身份与我对话。）\n\n用户说：${filteredMessage}` },
+        { inlineData: { mimeType: image.mimeType, data: image.data } }
+      ]
+    });
+  } else {
+    // 第一条：用户上下文（图片 + 说明）
+    contents.push({
+      role: 'user',
+      parts: [
+        { text: '（请根据这张画与设定，以画中角色身份与我对话。以下是之前的对话。）' },
+        { inlineData: { mimeType: image.mimeType, data: image.data } }
+      ]
+    });
+    for (const item of history) {
+      contents.push({ role: item.role, parts: [{ text: item.text }] });
+    }
+    contents.push({ role: 'user', parts: [{ text: filteredMessage }] });
+  }
+
+  try {
+    const aiClient = getAiClient();
+    const response = await aiClient.models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ] as any[],
+      }
+    });
+
+    if (response.text) {
+      const text = typeof response.text === 'function' ? (response.text as () => string)() : response.text;
+      if (text && typeof text === 'string') return text;
+    }
+
+    const candidate = response.candidates?.[0];
+    if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+      return `[回复被拦截] 原因: ${candidate.finishReason}`;
+    }
+    if (response.promptFeedback?.blockReason) {
+      return `[提示被拦截] 原因: ${response.promptFeedback.blockReason}`;
+    }
+
+    return '（未能生成回复，请重试。）';
+  } catch (error: any) {
+    console.error("[Gemini Chat] Error:", error);
+    throw new Error(error.message || "角色对话失败。");
+  }
+};

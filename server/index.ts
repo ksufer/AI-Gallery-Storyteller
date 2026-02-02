@@ -254,6 +254,58 @@ app.post('/api/images/:id/generate-story', async (req, res) => {
     }
 });
 
+// Chat as character (画中人对话)
+app.post('/api/images/:id/chat', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { message, history } = req.body as { message?: string; history?: Array<{ role: 'user' | 'model'; text: string }> };
+
+        if (!message || typeof message !== 'string' || !message.trim()) {
+            return res.status(400).json({ error: "message is required and must be non-empty" });
+        }
+
+        const maxHistory = 20;
+        const safeHistory = Array.isArray(history)
+            ? history
+                .filter((h: any) => h && (h.role === 'user' || h.role === 'model') && typeof h.text === 'string')
+                .slice(-maxHistory)
+                .map((h: any) => ({ role: h.role as 'user' | 'model', text: String(h.text).trim() }))
+            : [];
+
+        const image = getImageById(id) as any;
+        if (!image) {
+            return res.status(404).json({ error: "Image not found" });
+        }
+
+        const imageBuffer = await fs.readFile(image.file_path);
+        const base64Image = imageBuffer.toString('base64');
+        const mimeType = image.file_path.endsWith('.png') ? 'image/png' :
+            image.file_path.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+
+        const aiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
+        if (aiProvider !== 'gemini') {
+            return res.status(501).json({ error: "Chat as character is only supported with AI_PROVIDER=gemini" });
+        }
+
+        const { chatAsCharacter } = await import('../services/geminiService.js');
+        const story = image.story || undefined;
+
+        const reply = await chatAsCharacter({
+            image: { data: base64Image, mimeType },
+            story,
+            userMessage: message.trim(),
+            history: safeHistory,
+        });
+
+        res.json({ reply });
+    } catch (error: any) {
+        console.error("Chat API Error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: error.message || "Chat failed" });
+        }
+    }
+});
+
 // Update favorite endpoint
 app.patch('/api/images/:id/favorite', async (req, res) => {
     try {

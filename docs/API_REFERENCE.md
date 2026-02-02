@@ -158,7 +158,41 @@ Content-Type: application/json
 
 ---
 
-### 4. 更新收藏状态
+### 4. 与画中人对话
+
+以「画中角色」身份与用户多轮对话（需 `AI_PROVIDER=gemini`）。详见 [CHARACTER_CHAT.md](CHARACTER_CHAT.md)。
+
+**端点**: `POST /api/images/:id/chat`
+
+**路径参数**:
+- `id` (string): 图片 ID
+
+**请求体**:
+
+```json
+{
+  "message": "用户本条消息（必填）",
+  "history": [
+    { "role": "user", "text": "..." },
+    { "role": "model", "text": "..." }
+  ]
+}
+```
+
+- `message` (string, 必填): 用户本条消息。
+- `history` (array, 可选): 此前对话历史，每项 `{ role: "user" | "model", text: string }`，最多建议 20 条。
+
+**响应格式**:
+
+```json
+{
+  "reply": "角色回复的文本"
+}
+```
+
+---
+
+### 5. 更新收藏状态
 
 切换图片的收藏状态。
 
@@ -201,7 +235,7 @@ Content-Type: application/json
 
 ## 标签管理 API
 
-### 5. 获取标签列表
+### 6. 获取标签列表
 
 获取所有标签及其使用次数。
 
@@ -244,7 +278,7 @@ GET /api/tags?source=user
 
 ---
 
-### 6. 获取图片的标签
+### 7. 获取图片的标签
 
 获取指定图片的所有标签。
 
@@ -264,7 +298,7 @@ GET /api/tags?source=user
 
 ---
 
-### 7. 添加标签到图片
+### 8. 添加标签到图片
 
 为图片添加用户自定义标签。
 
@@ -306,7 +340,7 @@ GET /api/tags?source=user
 
 ---
 
-### 8. 从图片删除标签
+### 9. 从图片删除标签
 
 删除图片的指定标签。
 
@@ -336,7 +370,7 @@ DELETE /api/images/image_001.png_1738233600000/tags/%E6%88%91%E7%9A%84%E6%A0%87%
 
 ## 文件夹管理 API
 
-### 9. 获取日期文件夹列表
+### 10. 获取日期文件夹列表
 
 获取所有按日期归档的文件夹。
 
@@ -364,7 +398,7 @@ DELETE /api/images/image_001.png_1738233600000/tags/%E6%88%91%E7%9A%84%E6%A0%87%
 
 ## 上传 API
 
-### 10. 上传图片
+### 11. 上传图片
 
 上传单个或多个图片文件。
 
@@ -424,7 +458,7 @@ curl -X POST http://localhost:3000/api/upload \
 
 ## 设置管理 API
 
-### 11. 获取禁词替换表
+### 12. 获取禁词替换表
 
 获取当前的禁词替换配置。
 
@@ -445,7 +479,7 @@ curl -X POST http://localhost:3000/api/upload \
 
 ---
 
-### 12. 更新禁词替换表
+### 13. 更新禁词替换表
 
 更新禁词替换配置。
 
@@ -476,7 +510,7 @@ curl -X POST http://localhost:3000/api/upload \
 
 ---
 
-### 13. 获取屏蔽标签列表
+### 14. 获取屏蔽标签列表
 
 获取当前的标签屏蔽配置。
 
@@ -497,7 +531,7 @@ curl -X POST http://localhost:3000/api/upload \
 
 ---
 
-### 14. 更新屏蔽标签列表
+### 15. 更新屏蔽标签列表
 
 更新标签屏蔽配置。
 
@@ -531,7 +565,7 @@ curl -X POST http://localhost:3000/api/upload \
 
 ---
 
-### 15. 重新加载屏蔽标签配置
+### 16. 重新加载屏蔽标签配置
 
 手动重新加载标签屏蔽配置到内存。
 

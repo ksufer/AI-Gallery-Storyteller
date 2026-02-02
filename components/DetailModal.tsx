@@ -12,6 +12,15 @@ interface DetailModalProps {
   onTagsChanged?: () => void;
 }
 
+type RightPanelTab = 'story' | 'chat';
+
+interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
+const MAX_CHAT_HISTORY_DISPLAY = 10;
+
 const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete, onTagsChanged }) => {
   const [story, setStory] = useState(image.story || '');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -21,6 +30,11 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
   const [userKeywords, setUserKeywords] = useState('');
   const [isEditingStory, setIsEditingStory] = useState(false);
   const [loadingText, setLoadingText] = useState('AI 生成故事');
+
+  const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('story');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState('');
 
   // Sync internal state if prop changes
   useEffect(() => {
@@ -206,6 +220,39 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     }
   };
 
+  const handleSendChat = async () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+
+    setChatLoading(true);
+    const userMsg: ChatMessage = { role: 'user', text };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+
+    try {
+      const response = await fetch(`/api/images/${image.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          history: chatMessages,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '对话失败');
+      }
+      const reply = data.reply ?? '';
+      setChatMessages((prev) => [...prev, { role: 'model', text: reply }]);
+    } catch (e: any) {
+      console.error(e);
+      setChatMessages((prev) => [...prev, { role: 'model', text: `[出错] ${e.message || '请重试'}` }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 lg:p-8">
       {/* Backdrop */}
@@ -276,8 +323,26 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
           </div>
 
           <div className="p-6 space-y-8">
-            
-            {/* Story Teller Section */}
+            {/* Tab: 故事 / 对话 */}
+            <div className="flex gap-1 p-1 bg-black/30 rounded-lg border border-white/5 w-fit">
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('story')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${rightPanelTab === 'story' ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' : 'text-gray-400 hover:text-white'}`}
+              >
+                故事
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('chat')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${rightPanelTab === 'chat' ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50' : 'text-gray-400 hover:text-white'}`}
+              >
+                对话
+              </button>
+            </div>
+
+            {/* Story Teller Section (visible when tab = story) */}
+            {rightPanelTab === 'story' && (
             <div className="space-y-3">
                <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
@@ -338,6 +403,59 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                  )}
                </div>
             </div>
+            )}
+
+            {/* 对话 Tab：与画中人对话 */}
+            {rightPanelTab === 'chat' && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">
+                {image.story?.trim()
+                  ? '基于当前故事与画中人对话，角色会以第一人称回应。'
+                  : '暂无故事时，角色将仅根据画面自由发挥。建议先在「故事」Tab 生成故事后体验更佳。'}
+              </p>
+              <div className="flex flex-col gap-2 min-h-[260px] max-h-[280px] overflow-y-auto rounded-lg border border-white/10 bg-black/30 p-3 custom-scrollbar">
+                {chatMessages.length === 0 ? (
+                  <span className="text-xs text-gray-600 italic">发送一句话开始与画中人对话…</span>
+                ) : (
+                  chatMessages.slice(-MAX_CHAT_HISTORY_DISPLAY).map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                          msg.role === 'user'
+                            ? 'bg-purple-500/30 text-purple-100 border border-purple-500/30'
+                            : 'bg-white/10 text-gray-200 border border-white/10'
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendChat()}
+                  placeholder="输入想对画中人说的话…"
+                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
+                  disabled={chatLoading}
+                />
+                <button
+                  type="button"
+                  onClick={handleSendChat}
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="px-4 py-2 bg-purple-500/30 hover:bg-purple-500/40 text-purple-300 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {chatLoading ? '…' : '发送'}
+                </button>
+              </div>
+            </div>
+            )}
 
             {/* Tags Management */}
             <div className="space-y-3">
