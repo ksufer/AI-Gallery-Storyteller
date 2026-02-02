@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 import fs from 'fs';
 import path from 'path';
+import {
+  getAiConfig,
+  registerOpenAIReinitCallback,
+  type OpenAIConfig
+} from './aiConfigService.js';
 
 /**
  * OpenAI 兼容 API Service
@@ -8,37 +13,95 @@ import path from 'path';
  * 包括: OpenRouter, DeepSeek, Moonshot, 通义千问, GLM, Ollama 等
  */
 
-// Lazy initialization to allow server to start without API key
+// OpenAI 客户端实例
 let client: OpenAI | null = null;
 
-const getApiKey = () => {
-  return process.env.OPENAI_API_KEY || process.env.API_KEY;
+// 当前使用的配置
+let currentApiKey: string = '';
+let currentBaseUrl: string = '';
+let currentModel: string = 'gpt-4o';
+
+/**
+ * 获取 API Key（优先从 aiConfigService，然后从环境变量）
+ */
+const getApiKey = (): string => {
+  const config = getAiConfig();
+  return config.openai.apiKey || process.env.OPENAI_API_KEY || process.env.API_KEY || '';
 };
 
-const getBaseUrl = () => {
-  return process.env.OPENAI_BASE_URL;
+/**
+ * 获取 Base URL
+ */
+const getBaseUrl = (): string => {
+  const config = getAiConfig();
+  return config.openai.baseUrl || process.env.OPENAI_BASE_URL || '';
 };
 
-const getClient = () => {
-  if (!client) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      throw new Error("未设置 OpenAI API 密钥");
-    }
+/**
+ * 获取当前模型
+ */
+const getModel = (): string => {
+  const config = getAiConfig();
+  return config.openai.model || process.env.OPENAI_MODEL || currentModel;
+};
 
+/**
+ * 获取或创建 OpenAI 客户端
+ */
+const getClient = (): OpenAI => {
+  const apiKey = getApiKey();
+  const baseURL = getBaseUrl();
+  
+  if (!apiKey) {
+    throw new Error("未设置 OpenAI API 密钥");
+  }
+
+  // 如果配置发生变化，重新创建客户端
+  if (!client || apiKey !== currentApiKey || baseURL !== currentBaseUrl) {
     const config: any = { apiKey };
     
-    // 如果设置了自定义 BASE_URL，则使用它（支持 OpenRouter 等第三方服务）
-    const baseURL = getBaseUrl();
     if (baseURL) {
       config.baseURL = baseURL;
-      console.log(`✓ 使用自定义 OpenAI 端点: ${baseURL}`);
+      console.log(`[OpenAI] 使用自定义端点: ${baseURL}`);
     }
 
     client = new OpenAI(config);
+    currentApiKey = apiKey;
+    currentBaseUrl = baseURL;
+    console.log('[OpenAI] 客户端已初始化');
   }
+  
   return client;
 };
+
+/**
+ * 重新初始化 OpenAI 服务
+ * 用于支持热切换 API Key、Base URL 和模型
+ */
+export function reinitialize(config: OpenAIConfig): void {
+  console.log('[OpenAI] 正在重新初始化服务...');
+  
+  // 更新模型配置
+  currentModel = config.model || 'gpt-4o';
+  
+  // 如果配置发生变化，清除现有客户端
+  if (config.apiKey !== currentApiKey || config.baseUrl !== currentBaseUrl) {
+    client = null;
+    currentApiKey = '';
+    currentBaseUrl = '';
+  }
+  
+  // 重新加载系统提示词
+  loadSystemPrompt();
+  
+  // 重新加载禁词表
+  loadForbiddenWords();
+  
+  console.log(`[OpenAI] 服务已重新初始化 (模型: ${currentModel}, Base URL: ${config.baseUrl || '默认'})`);
+}
+
+// 注册重新初始化回调
+registerOpenAIReinitCallback(reinitialize);
 
 // 禁词表 - 从外部配置文件加载
 let FORBIDDEN_WORDS_MAP: Record<string, string> = {};
@@ -46,8 +109,8 @@ let FORBIDDEN_WORDS_MAP: Record<string, string> = {};
 // 系统提示词 - 从外部配置文件加载
 let SYSTEM_INSTRUCTION = '';
 
-// 异步加载禁词表配置
-const loadForbiddenWords = async (): Promise<void> => {
+// 加载禁词表配置
+const loadForbiddenWords = (): void => {
   try {
     const configPath = path.join(process.cwd(), 'config', 'forbidden-words.json');
     if (!fs.existsSync(configPath)) {
@@ -179,13 +242,14 @@ const supportsVision = (): boolean => {
   }
   
   // 否则根据模型名称自动判断
-  const model = (process.env.OPENAI_MODEL || "gpt-4o").toLowerCase();
+  const model = getModel().toLowerCase();
   
   // 已知支持视觉的模型列表
   const visionModels = [
     'gpt-4o',
     'gpt-4-turbo',
     'gpt-4-vision',
+    'gpt-5',
     'claude-3',
     'gemini',
     'llava',
@@ -196,6 +260,100 @@ const supportsVision = (): boolean => {
   
   return visionModels.some(visionModel => model.includes(visionModel));
 };
+
+/**
+ * 获取 OpenAI 兼容 API 的可用模型列表
+ */
+export async function listModels(apiKey?: string, baseUrl?: string): Promise<Array<{ id: string; name: string }>> {
+  const key = apiKey || getApiKey();
+  const url = baseUrl || getBaseUrl();
+  
+  if (!key) {
+    throw new Error("未设置 OpenAI API 密钥");
+  }
+  
+  try {
+    const config: any = { apiKey: key };
+    if (url) {
+      config.baseURL = url;
+    }
+    
+    const tempClient = new OpenAI(config);
+    const response = await tempClient.models.list();
+    
+    const models: Array<{ id: string; name: string }> = [];
+    
+    for await (const model of response) {
+      models.push({
+        id: model.id,
+        name: model.id
+      });
+    }
+    
+    // 按名称排序
+    models.sort((a, b) => a.name.localeCompare(b.name));
+    
+    return models;
+  } catch (error: any) {
+    console.error('[OpenAI] 获取模型列表失败:', error);
+    throw new Error(error.message || "获取模型列表失败");
+  }
+}
+
+/**
+ * 测试 OpenAI 兼容 API 连通性
+ */
+export async function testConnection(apiKey?: string, baseUrl?: string): Promise<{ success: boolean; message: string; model?: string }> {
+  const key = apiKey || getApiKey();
+  const url = baseUrl || getBaseUrl();
+  
+  if (!key) {
+    return { success: false, message: "未设置 API 密钥" };
+  }
+  
+  try {
+    const config: any = { apiKey: key };
+    if (url) {
+      config.baseURL = url;
+    }
+    
+    const tempClient = new OpenAI(config);
+    const model = getModel();
+    
+    // 尝试发送一个简单的请求
+    const response = await tempClient.chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: 'Hello, respond with just OK in one word.' }],
+      max_tokens: 10
+    });
+    
+    if (response.choices[0]?.message?.content) {
+      return { 
+        success: true, 
+        message: "连接成功",
+        model
+      };
+    } else {
+      return { success: false, message: "API 返回空响应" };
+    }
+  } catch (error: any) {
+    console.error('[OpenAI] 连接测试失败:', error);
+    
+    // 解析错误信息
+    let message = error.message || "连接失败";
+    if (error.status === 401) {
+      message = "API 密钥无效";
+    } else if (error.status === 403) {
+      message = "API 访问被拒绝";
+    } else if (error.status === 404) {
+      message = "模型不存在或 API 端点错误";
+    } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      message = "无法连接到 API 服务器，请检查 Base URL";
+    }
+    
+    return { success: false, message };
+  }
+}
 
 /**
  * 生成故事（支持 OpenAI 兼容 API）
@@ -210,8 +368,10 @@ export const generateStoryFromPrompts = async (
 ): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey) {
-    throw new Error("未设置 API 密钥，请配置 process.env.OPENAI_API_KEY 或 .env.local 中的 OPENAI_API_KEY");
+    throw new Error("未设置 API 密钥，请在设置中配置 OpenAI API Key");
   }
+
+  const model = getModel();
 
   try {
     // 过滤年龄相关提示词
@@ -229,8 +389,6 @@ export const generateStoryFromPrompts = async (
         console.log(`[OpenAI Story] Added user keywords: ${safeKeywords}`);
     }
 
-    console.log(`[OpenAI Story] Final Prompt Text: ${promptText}`);
-    
     // 检查模型是否支持视觉
     const hasVisionSupport = supportsVision();
     const useImage = image && hasVisionSupport;
@@ -238,10 +396,8 @@ export const generateStoryFromPrompts = async (
     // Debug Log
     console.log("=== OpenAI Request Debug ===");
     console.log("Base URL:", getBaseUrl() || "(使用默认 OpenAI 端点)");
-    console.log("Model:", process.env.OPENAI_MODEL || "gpt-4o");
+    console.log("Model:", model);
     console.log("Vision Support:", hasVisionSupport);
-    console.log("Original Prompts:", prompts);
-    console.log("Filtered Prompts:", safePrompts);
     console.log("Has Image:", !!image);
     console.log("Will Use Image:", useImage);
     console.log("============================");
@@ -287,7 +443,7 @@ export const generateStoryFromPrompts = async (
 
     // 调用 OpenAI API
     const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o", // 默认使用 GPT-4o（支持视觉）
+      model,
       messages,
       temperature: 0.8,
       max_tokens: 500,
@@ -340,7 +496,7 @@ export const generateStoryFromPrompts = async (
         ];
         
         const fallbackResponse = await openai.chat.completions.create({
-          model: process.env.OPENAI_MODEL || "gpt-4o",
+          model: getModel(),
           messages: fallbackMessages,
           temperature: 0.8,
           max_tokens: 500,
@@ -361,7 +517,7 @@ export const generateStoryFromPrompts = async (
     
     // 提供更友好的错误信息
     if (error.status === 401) {
-      throw new Error("API 密钥无效，请检查 OPENAI_API_KEY 配置");
+      throw new Error("API 密钥无效，请检查设置中的 API Key");
     } else if (error.status === 429) {
       throw new Error("API 调用频率超限，请稍后再试");
     } else if (error.status === 500) {
@@ -383,6 +539,8 @@ export const generateStoryStream = async function* (
   if (!apiKey) {
     throw new Error("未设置 API 密钥");
   }
+
+  const model = getModel();
 
   try {
     let safePrompts = prompts.map(p => filterAgeWords(p));
@@ -430,7 +588,7 @@ export const generateStoryStream = async function* (
 
     try {
         const stream = await openai.chat.completions.create({
-          model: process.env.OPENAI_MODEL || "gpt-4o",
+          model,
           messages,
           temperature: 0.8,
           max_tokens: 500,
@@ -476,7 +634,7 @@ export const generateStoryStream = async function* (
             ];
             
             const fallbackStream = await openai.chat.completions.create({
-              model: process.env.OPENAI_MODEL || "gpt-4o",
+              model: getModel(),
               messages: fallbackMessages,
               temperature: 0.8,
               max_tokens: 500,
