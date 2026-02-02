@@ -665,14 +665,20 @@ app.put('/api/settings/system-prompt', async (req, res) => {
         // Write to file with pretty formatting
         await fs.writeFile(configPath, JSON.stringify({ content }, null, 2), 'utf-8');
         
-        // Reload the prompt in memory
-        const { reloadSystemPrompt } = await import('../services/geminiService.js');
-        const reloaded = reloadSystemPrompt();
+        // Reload the prompt in memory for both services
+        const geminiService = await import('../services/geminiService.js');
+        const openaiService = await import('../services/openaiService.js');
+        
+        const geminiReloaded = geminiService.reloadSystemPrompt();
+        const openaiReloaded = openaiService.reloadSystemPrompt();
         
         res.json({ 
             success: true, 
             message: "System prompt updated successfully",
-            reloaded 
+            reloaded: {
+                gemini: geminiReloaded,
+                openai: openaiReloaded
+            }
         });
     } catch (error: any) {
         console.error("Update System Prompt API Error:", error);
