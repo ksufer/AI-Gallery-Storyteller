@@ -1330,8 +1330,16 @@ const setupServer = async () => {
         });
     } else {
         // Development: use Vite middleware
+        // 局域网访问时需配置 HMR：使 HMR 客户端连接到正确的 host:port，避免显示异常
+        const hmrHost = process.env.HMR_HOST; // 例: 10.126.126.5（本机在 10.126.126.0/24 网段的 IP）
         const vite = await createViteServer({
-            server: { middlewareMode: true },
+            server: {
+                middlewareMode: true,
+                host: true,
+                hmr: hmrHost
+                    ? { host: hmrHost, clientPort: PORT }
+                    : { clientPort: PORT }
+            },
             appType: 'custom'
         });
         
