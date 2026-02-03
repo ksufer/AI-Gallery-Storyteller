@@ -220,6 +220,17 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     }
   };
 
+  const sendChatRequest = useCallback(async (message: string, history: ChatMessage[]) => {
+    const response = await fetch(`/api/images/${image.id}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '对话失败');
+    return data.reply ?? '';
+  }, [image.id]);
+
   const handleSendChat = async () => {
     const text = chatInput.trim();
     if (!text || chatLoading) return;
@@ -230,26 +241,40 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     setChatInput('');
 
     try {
-      const response = await fetch(`/api/images/${image.id}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          history: chatMessages,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || '对话失败');
-      }
-      const reply = data.reply ?? '';
+      const reply = await sendChatRequest(text, chatMessages);
       setChatMessages((prev) => [...prev, { role: 'model', text: reply }]);
     } catch (e: any) {
       console.error(e);
       setChatMessages((prev) => [...prev, { role: 'model', text: `[出错] ${e.message || '请重试'}` }]);
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  const canRegenerate = chatMessages.length >= 2 && chatMessages[chatMessages.length - 1]?.role === 'model';
+
+  const handleRegenerateLastReply = async () => {
+    if (!canRegenerate || chatLoading) return;
+    const lastUserText = chatMessages[chatMessages.length - 2]!.text;
+    const historyBeforeLastUser = chatMessages.slice(0, -2);
+    setChatMessages((prev) => prev.slice(0, -1));
+
+    setChatLoading(true);
+    try {
+      const reply = await sendChatRequest(lastUserText, historyBeforeLastUser);
+      setChatMessages((prev) => [...prev, { role: 'model', text: reply }]);
+    } catch (e: any) {
+      console.error(e);
+      setChatMessages((prev) => [...prev, { role: 'model', text: `[出错] ${e.message || '请重试'}` }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleClearChat = () => {
+    if (chatMessages.length === 0) return;
+    if (window.confirm('确定清空当前对话记录？')) {
+      setChatMessages([]);
     }
   };
 
@@ -435,14 +460,32 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
                   ))
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleRegenerateLastReply}
+                  disabled={chatLoading || !canRegenerate}
+                  title="重新生成上一条回复"
+                  className="px-3 py-2 text-xs text-gray-400 hover:text-purple-300 border border-white/10 hover:border-purple-500/30 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  重说
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearChat}
+                  disabled={chatMessages.length === 0}
+                  title="清空对话记录"
+                  className="px-3 py-2 text-xs text-gray-400 hover:text-red-400 border border-white/10 hover:border-red-500/30 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  清空
+                </button>
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendChat()}
                   placeholder="输入想对画中人说的话…"
-                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
+                  className="flex-1 min-w-0 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500/50"
                   disabled={chatLoading}
                 />
                 <button

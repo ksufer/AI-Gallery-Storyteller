@@ -593,9 +593,8 @@ export const generateStoryStream = async function* (
           temperature: 0.8,
           max_tokens: 500,
           stream: true,
-          // @ts-ignore
-          transforms: ["middle-out"]
-        });
+          transforms: ["middle-out"],
+        } as any) as unknown as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
 
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || '';
@@ -639,9 +638,8 @@ export const generateStoryStream = async function* (
               temperature: 0.8,
               max_tokens: 500,
               stream: true,
-              // @ts-ignore
-              transforms: ["middle-out"]
-            });
+              transforms: ["middle-out"],
+            } as any) as unknown as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
 
             for await (const chunk of fallbackStream) {
                 const content = chunk.choices[0]?.delta?.content || '';
@@ -671,7 +669,9 @@ const CHAT_SYSTEM_INSTRUCTION = (story: string | undefined): string => {
   const storyBlock = story && story.trim()
     ? `以下是这幅画的背景故事：\n\n${story.trim()}`
     : '（没有预设故事，请仅根据画面自由发挥，想象你是画中的角色。）';
-  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}\n\n请保持简短、有氛围，一两句话即可，不要脱离角色。`;
+  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}
+
+回复时请同时加上动作或场景描述。格式要求：说话内容放在引号中（如「」或""），动作、神态、场景放在小括号（）中。例如：「……你好。」（她微微侧过头，望向窗外的雨。）保持简短、有氛围，一两句话即可，不要脱离角色。`;
 };
 
 /**
@@ -740,22 +740,26 @@ export const chatAsCharacter = async (params: {
       model,
       messages,
       temperature: 0.7,
-      max_tokens: 300,
-    });
+      max_tokens: 1024,
+      reasoning_effort: 'low',
+    } as any);
 
-    const text = response.choices[0]?.message?.content;
-    if (text && typeof text === 'string') {
+    const choices = response?.choices;
+    const first = Array.isArray(choices) ? choices[0] : undefined;
+    const text = first?.message?.content;
+    if (text != null && typeof text === 'string') {
       return text.trim();
     }
     return '（未能生成回复，请重试。）';
   } catch (error: any) {
     console.error("[OpenAI Chat] Error:", error);
-    if (error.status === 401) {
+    if (error?.status === 401) {
       throw new Error("API 密钥无效");
     }
-    if (error.status === 429) {
+    if (error?.status === 429) {
       throw new Error("调用频率超限，请稍后再试");
     }
-    throw new Error(error.message || "角色对话失败");
+    const msg = error?.message ?? "角色对话失败";
+    throw new Error(typeof msg === 'string' ? msg : "角色对话失败");
   }
 };
