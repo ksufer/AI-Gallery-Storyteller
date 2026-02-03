@@ -103,6 +103,59 @@ export const initDb = () => {
     } catch (e) {
         // Column probably exists, ignore
     }
+
+    // Sync sources table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            path TEXT NOT NULL UNIQUE,
+            enabled INTEGER DEFAULT 1,
+            last_sync_at TEXT,
+            auto_sync INTEGER DEFAULT 0,
+            sync_interval INTEGER DEFAULT 3600,
+            from_date TEXT,
+            to_date TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    `);
+
+    // Sync records table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            source_path TEXT NOT NULL,
+            file_hash TEXT NOT NULL,
+            file_size INTEGER,
+            file_mtime TEXT,
+            target_path TEXT,
+            status TEXT DEFAULT 'copied',
+            copied_at TEXT,
+            error_message TEXT,
+            FOREIGN KEY (source_id) REFERENCES sync_sources(id) ON DELETE CASCADE,
+            UNIQUE(source_id, file_hash)
+        )
+    `);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_records_hash ON sync_records(file_hash)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_records_status ON sync_records(status)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_records_target_path ON sync_records(target_path)`);
+
+    // Sync tasks table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sync_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            total_files INTEGER DEFAULT 0,
+            processed_files INTEGER DEFAULT 0,
+            total_size INTEGER DEFAULT 0,
+            copied_size INTEGER DEFAULT 0,
+            started_at TEXT,
+            completed_at TEXT,
+            FOREIGN KEY (source_id) REFERENCES sync_sources(id) ON DELETE CASCADE
+        )
+    `);
 };
 
 // Initialize DB tables before preparing statements
@@ -292,3 +345,170 @@ export const removeTagFromImage = (imageId: string, tagName: string) => {
         deleteImageTagStmt.run(imageId, tagRow.id);
     }
 };
+
+// ============ Sync sources ============
+export const createSyncSource = (name: string, sourcePath: string, options?: { fromDate?: string; toDate?: string; autoSync?: boolean; syncInterval?: number }) => {
+    const stmt = db.prepare(`
+        INSERT INTO sync_sources (name, path, from_date, to_date, auto_sync, sync_interval)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(
+        name,
+        sourcePath,
+        options?.fromDate ?? null,
+        options?.toDate ?? null,
+        options?.autoSync ? 1 : 0,
+        options?.syncInterval ?? 3600
+    );
+    return info.lastInsertRowid as number;
+};
+
+export const getSyncSources = () => {
+    return db.prepare('SELECT * FROM sync_sources ORDER BY id ASC').all() as SyncSourceRow[];
+};
+
+export const getSyncSourceById = (id: number) => {
+    return db.prepare('SELECT * FROM sync_sources WHERE id = ?').get(id) as SyncSourceRow | undefined;
+};
+
+export const updateSyncSource = (id: number, updates: { name?: string; path?: string; enabled?: boolean; lastSyncAt?: string; autoSync?: boolean; syncInterval?: number; fromDate?: string | null; toDate?: string | null }) => {
+    const row = getSyncSourceById(id);
+    if (!row) return;
+    const name = updates.name ?? row.name;
+    const pathVal = updates.path ?? row.path;
+    const enabled = updates.enabled !== undefined ? (updates.enabled ? 1 : 0) : row.enabled;
+    const lastSyncAt = updates.lastSyncAt !== undefined ? updates.lastSyncAt : row.last_sync_at;
+    const autoSync = updates.autoSync !== undefined ? (updates.autoSync ? 1 : 0) : row.auto_sync;
+    const syncInterval = updates.syncInterval ?? row.sync_interval;
+    const fromDate = updates.fromDate !== undefined ? updates.fromDate : row.from_date;
+    const toDate = updates.toDate !== undefined ? updates.toDate : row.to_date;
+    db.prepare(`
+        UPDATE sync_sources SET name = ?, path = ?, enabled = ?, last_sync_at = ?, auto_sync = ?, sync_interval = ?, from_date = ?, to_date = ?
+        WHERE id = ?
+    `).run(name, pathVal, enabled, lastSyncAt, autoSync, syncInterval, fromDate, toDate, id);
+};
+
+export const deleteSyncSource = (id: number) => {
+    db.prepare('DELETE FROM sync_sources WHERE id = ?').run(id);
+};
+
+// ============ Sync records ============
+export const getSyncRecordsBySourceId = (sourceId: number) => {
+    return db.prepare('SELECT * FROM sync_records WHERE source_id = ?').all(sourceId) as SyncRecordRow[];
+};
+
+export const getSyncRecordBySourceAndHash = (sourceId: number, fileHash: string) => {
+    return db.prepare('SELECT * FROM sync_records WHERE source_id = ? AND file_hash = ?').get(sourceId, fileHash) as SyncRecordRow | undefined;
+};
+
+export const upsertSyncRecord = (record: {
+    sourceId: number;
+    sourcePath: string;
+    fileHash: string;
+    fileSize?: number;
+    fileMtime?: string;
+    targetPath?: string;
+    status?: string;
+    errorMessage?: string;
+}) => {
+    const copiedAt = record.status === 'copied' || record.status === 'failed' ? new Date().toISOString() : null;
+    db.prepare(`
+        INSERT INTO sync_records (source_id, source_path, file_hash, file_size, file_mtime, target_path, status, copied_at, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(source_id, file_hash) DO UPDATE SET
+            source_path = excluded.source_path,
+            file_size = excluded.file_size,
+            file_mtime = excluded.file_mtime,
+            target_path = excluded.target_path,
+            status = excluded.status,
+            copied_at = excluded.copied_at,
+            error_message = excluded.error_message
+    `).run(
+        record.sourceId,
+        record.sourcePath,
+        record.fileHash,
+        record.fileSize ?? null,
+        record.fileMtime ?? null,
+        record.targetPath ?? null,
+        record.status ?? 'copied',
+        copiedAt,
+        record.errorMessage ?? null
+    );
+};
+
+export const markSyncRecordDeletedByFilePath = (filePath: string) => {
+    db.prepare("UPDATE sync_records SET status = 'deleted' WHERE target_path = ?").run(filePath);
+};
+
+export const resetDeletedRecordsBySourceId = (sourceId: number) => {
+    db.prepare("DELETE FROM sync_records WHERE source_id = ? AND status = 'deleted'").run(sourceId);
+};
+
+// ============ Sync tasks ============
+export const createSyncTask = (sourceId: number, totalFiles: number, totalSize: number) => {
+    const info = db.prepare(`
+        INSERT INTO sync_tasks (source_id, status, total_files, total_size, started_at)
+        VALUES (?, 'running', ?, ?, datetime('now'))
+    `).run(sourceId, totalFiles, totalSize);
+    return info.lastInsertRowid as number;
+};
+
+export const updateSyncTaskProgress = (taskId: number, updates: { processedFiles?: number; copiedSize?: number; status?: string }) => {
+    const row = db.prepare('SELECT * FROM sync_tasks WHERE id = ?').get(taskId) as SyncTaskRow | undefined;
+    if (!row) return;
+    const processedFiles = updates.processedFiles ?? row.processed_files;
+    const copiedSize = updates.copiedSize ?? row.copied_size;
+    const status = updates.status ?? row.status;
+    const completedAt = status === 'completed' || status === 'failed' ? new Date().toISOString() : row.completed_at;
+    db.prepare(`
+        UPDATE sync_tasks SET processed_files = ?, copied_size = ?, status = ?, completed_at = ?
+        WHERE id = ?
+    `).run(processedFiles, copiedSize, status, completedAt ?? null, taskId);
+};
+
+export const getActiveSyncTaskBySourceId = (sourceId: number) => {
+    return db.prepare("SELECT * FROM sync_tasks WHERE source_id = ? AND status IN ('pending', 'running', 'paused') ORDER BY id DESC LIMIT 1").get(sourceId) as SyncTaskRow | undefined;
+};
+
+export const getSyncTaskById = (id: number) => {
+    return db.prepare('SELECT * FROM sync_tasks WHERE id = ?').get(id) as SyncTaskRow | undefined;
+};
+
+// Types for sync tables
+export interface SyncSourceRow {
+    id: number;
+    name: string;
+    path: string;
+    enabled: number;
+    last_sync_at: string | null;
+    auto_sync: number;
+    sync_interval: number;
+    from_date: string | null;
+    to_date: string | null;
+    created_at: string;
+}
+
+export interface SyncRecordRow {
+    id: number;
+    source_id: number;
+    source_path: string;
+    file_hash: string;
+    file_size: number | null;
+    file_mtime: string | null;
+    target_path: string | null;
+    status: string;
+    copied_at: string | null;
+    error_message: string | null;
+}
+
+export interface SyncTaskRow {
+    id: number;
+    source_id: number;
+    status: string;
+    total_files: number;
+    processed_files: number;
+    total_size: number;
+    copied_size: number;
+    started_at: string | null;
+    completed_at: string | null;
+}

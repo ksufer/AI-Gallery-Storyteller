@@ -5,7 +5,8 @@ import SettingsModal from './components/SettingsModal';
 import VirtualMasonryGallery from './components/VirtualMasonryGallery';
 import BatchActionBar from './components/BatchActionBar';
 import { GalleryImage, FilterState, PaginatedResponse } from './types';
-import { SparklesIcon, CogIcon } from './components/Icons';
+import { SparklesIcon, CogIcon, ArrowPathIcon } from './components/Icons';
+import SyncModal from './components/SyncModal';
 
 function App() {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -17,6 +18,7 @@ function App() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   
   // Pagination state
   const [page, setPage] = useState(1);
@@ -553,6 +555,13 @@ function App() {
               </svg>
             </button>
             <button
+              onClick={() => setShowSyncModal(true)}
+              className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all border border-transparent hover:border-white/10"
+              title="图片同步"
+            >
+              <ArrowPathIcon className="w-5 h-5" />
+            </button>
+            <button
               onClick={() => setShowSettings(true)}
               className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all border border-transparent hover:border-white/10"
               title="设置"
@@ -668,6 +677,11 @@ function App() {
         <SettingsModal 
           onClose={() => setShowSettings(false)}
         />
+      )}
+
+      {/* Sync Modal */}
+      {showSyncModal && (
+        <SyncModal onClose={() => setShowSyncModal(false)} />
       )}
     </div>
   );

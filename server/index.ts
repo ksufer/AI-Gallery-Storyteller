@@ -9,8 +9,9 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags } from './db.ts';
+import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags, markSyncRecordDeletedByFilePath, createSyncSource, getSyncSources, getSyncSourceById, updateSyncSource, deleteSyncSource, resetDeletedRecordsBySourceId, getActiveSyncTaskBySourceId } from './db.ts';
 import { parseImageFile } from './metadata.ts';
+import { validateSourcePath, runSync, scanSourceDirectory, getSyncProgress, setSyncRunState, getSyncRunState } from './syncService.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -345,6 +346,7 @@ app.delete('/api/images/:id', async (req, res) => {
         
         // Delete from database
         deleteImage(id);
+        markSyncRecordDeletedByFilePath(image.file_path);
         
         res.json({ success: true, message: "Image deleted successfully" });
     } catch (error: any) {
@@ -440,6 +442,7 @@ app.post('/api/batch/delete', async (req, res) => {
                 
                 // Delete from database
                 deleteImage(id);
+                markSyncRecordDeletedByFilePath(image.file_path);
                 return id;
             })
         );
@@ -621,6 +624,239 @@ app.post('/api/batch/stories', async (req, res) => {
         console.error("Batch Stories API Error:", error);
         res.status(500).json({ success: false, error: error.message || "Failed to batch generate stories" });
     }
+});
+
+// ============================================
+// Sync API
+// ============================================
+
+// List sync sources
+app.get('/api/sync/sources', (req, res) => {
+    try {
+        const sources = getSyncSources();
+        res.json({ success: true, data: sources });
+    } catch (error: any) {
+        console.error("Sync sources list error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to list sync sources" });
+    }
+});
+
+// Add sync source
+app.post('/api/sync/sources', async (req, res) => {
+    try {
+        const { name, path: sourcePath, fromDate, toDate, autoSync, syncInterval } = req.body;
+        if (!name || typeof name !== 'string' || !sourcePath || typeof sourcePath !== 'string') {
+            return res.status(400).json({ success: false, error: "name and path are required" });
+        }
+        const resolvedPath = path.resolve(sourcePath.trim());
+        await validateSourcePath(resolvedPath, UPLOADS_DIR);
+        const id = createSyncSource(name.trim(), resolvedPath, {
+            fromDate: fromDate || undefined,
+            toDate: toDate || undefined,
+            autoSync: !!autoSync,
+            syncInterval: typeof syncInterval === 'number' ? syncInterval : 3600,
+        });
+        const source = getSyncSourceById(Number(id));
+        res.status(201).json({ success: true, data: source });
+    } catch (error: any) {
+        console.error("Sync source add error:", error);
+        res.status(400).json({ success: false, error: error.message || "Invalid path or failed to add source" });
+    }
+});
+
+// Update sync source
+app.put('/api/sync/sources/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        const { name, path: sourcePath, enabled, fromDate, toDate, autoSync, syncInterval } = req.body;
+        const updates: { name?: string; path?: string; enabled?: boolean; fromDate?: string | null; toDate?: string | null; autoSync?: boolean; syncInterval?: number } = {};
+        if (name !== undefined) updates.name = String(name).trim();
+        if (enabled !== undefined) updates.enabled = !!enabled;
+        if (fromDate !== undefined) updates.fromDate = fromDate === null || fromDate === '' ? null : String(fromDate);
+        if (toDate !== undefined) updates.toDate = toDate === null || toDate === '' ? null : String(toDate);
+        if (autoSync !== undefined) updates.autoSync = !!autoSync;
+        if (syncInterval !== undefined) updates.syncInterval = Number(syncInterval);
+        if (sourcePath !== undefined) {
+            const resolvedPath = path.resolve(String(sourcePath).trim());
+            await validateSourcePath(resolvedPath, UPLOADS_DIR);
+            updates.path = resolvedPath;
+        }
+        updateSyncSource(id, updates);
+        const updated = getSyncSourceById(id);
+        res.json({ success: true, data: updated });
+    } catch (error: any) {
+        console.error("Sync source update error:", error);
+        res.status(400).json({ success: false, error: error.message || "Failed to update source" });
+    }
+});
+
+// Delete sync source
+app.delete('/api/sync/sources/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        deleteSyncSource(id);
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error("Sync source delete error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to delete source" });
+    }
+});
+
+// Start sync
+app.post('/api/sync/start/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        if (getActiveSyncTaskBySourceId(id)) {
+            return res.status(409).json({ success: false, error: "A sync task is already running for this source" });
+        }
+        runSync(id, UPLOADS_DIR).catch((err) => console.error("Sync error:", err));
+        res.status(202).json({ success: true, message: "Sync started" });
+    } catch (error: any) {
+        console.error("Sync start error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to start sync" });
+    }
+});
+
+// Pause sync
+app.post('/api/sync/pause/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const state = getSyncRunState(id);
+        if (!state) return res.status(404).json({ success: false, error: "No active sync for this source" });
+        setSyncRunState(id, { ...state, paused: true });
+        res.json({ success: true, message: "Sync paused" });
+    } catch (error: any) {
+        console.error("Sync pause error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to pause sync" });
+    }
+});
+
+// Resume sync
+app.post('/api/sync/resume/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const state = getSyncRunState(id);
+        if (!state) return res.status(404).json({ success: false, error: "No active sync for this source" });
+        setSyncRunState(id, { ...state, paused: false });
+        res.json({ success: true, message: "Sync resumed" });
+    } catch (error: any) {
+        console.error("Sync resume error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to resume sync" });
+    }
+});
+
+// Get sync status
+app.get('/api/sync/status/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        const task = getActiveSyncTaskBySourceId(id);
+        const progress = getSyncProgress(id);
+        res.json({ success: true, data: { source, task: task ?? null, progress: progress ?? null } });
+    } catch (error: any) {
+        console.error("Sync status error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to get sync status" });
+    }
+});
+
+// Preview sync (scan only, no copy)
+app.get('/api/sync/preview/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        await validateSourcePath(path.resolve(source.path), UPLOADS_DIR);
+        const list = await scanSourceDirectory(path.resolve(source.path), {
+            fromDate: source.from_date ?? undefined,
+            toDate: source.to_date ?? undefined,
+        });
+        const totalSize = list.reduce((s, e) => s + e.size, 0);
+        const limit = Math.min(100, list.length);
+        const files = list.slice(0, limit).map((e) => ({ path: e.path, size: e.size, mtime: e.mtime.toISOString() }));
+        res.json({ success: true, data: { totalFiles: list.length, totalSize, files } });
+    } catch (error: any) {
+        console.error("Sync preview error:", error);
+        res.status(400).json({ success: false, error: error.message || "Failed to preview sync" });
+    }
+});
+
+// Reset deleted records for a source
+app.post('/api/sync/reset-records/:id', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, error: "Invalid source id" });
+        const source = getSyncSourceById(id);
+        if (!source) return res.status(404).json({ success: false, error: "Sync source not found" });
+        resetDeletedRecordsBySourceId(id);
+        res.json({ success: true, message: "Deleted records reset" });
+    } catch (error: any) {
+        console.error("Sync reset-records error:", error);
+        res.status(500).json({ success: false, error: error.message || "Failed to reset records" });
+    }
+});
+
+// SSE: sync progress events
+app.get('/api/sync/events/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+        res.status(400).json({ success: false, error: "Invalid source id" });
+        return;
+    }
+    const source = getSyncSourceById(id);
+    if (!source) {
+        res.status(404).json({ success: false, error: "Sync source not found" });
+        return;
+    }
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const send = (data: object) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+        res.flush?.();
+    };
+
+    const interval = setInterval(() => {
+        if (res.writableEnded) {
+            clearInterval(interval);
+            return;
+        }
+        const progress = getSyncProgress(id);
+        if (progress) {
+            send({
+                status: progress.status,
+                processedFiles: progress.processedFiles,
+                totalFiles: progress.totalFiles,
+                copiedSize: progress.copiedSize,
+                totalSize: progress.totalSize,
+                logLines: progress.logLines,
+            });
+            if (['completed', 'failed', 'cancelled'].includes(progress.status)) {
+                clearInterval(interval);
+                res.end();
+            }
+        }
+    }, 1000);
+
+    req.on('close', () => {
+        clearInterval(interval);
+        if (!res.writableEnded) res.end();
+    });
 });
 
 // Get forbidden words settings
