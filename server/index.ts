@@ -1384,12 +1384,14 @@ const init = async () => {
     await syncImagesWithDb(UPLOADS_DIR);
     console.log("Initialization complete.");
 
-    // Periodic scan every 60 seconds
+    // Periodic scan every 60 seconds（静默同步，仅在有变更时输出一行）
     setInterval(async () => {
         try {
-            // console.log("Running periodic scan...");
             await organizeUploads(UPLOADS_DIR);
-            await syncImagesWithDb(UPLOADS_DIR);
+            const { added, removed } = await syncImagesWithDb(UPLOADS_DIR, { quiet: true });
+            if (added > 0 || removed > 0) {
+                console.log(`Sync: ${added} added, ${removed} removed.`);
+            }
         } catch (e) {
             console.error("Periodic scan error:", e);
         }

@@ -135,44 +135,57 @@ export const getAllImages = async (dir: string): Promise<string[]> => {
     return results;
 };
 
-export const syncImagesWithDb = async (uploadsDir: string) => {
-    console.log("Syncing images with database...");
-    
+export type SyncResult = { added: number; removed: number };
+
+/**
+ * 将磁盘上的图片与数据库记录同步（增删）。
+ * @param uploadsDir - 上传目录
+ * @param opts.quiet - 为 true 时不输出 "Syncing..." / "Sync complete."，仅返回统计（用于周期任务）
+ * @returns 本次同步新增与删除的数量
+ */
+export const syncImagesWithDb = async (
+    uploadsDir: string,
+    opts?: { quiet?: boolean }
+): Promise<SyncResult> => {
+    const quiet = opts?.quiet ?? false;
+    if (!quiet) console.log("Syncing images with database...");
+
     // 1. Get all files on disk
     const fsPaths = await getAllImages(uploadsDir);
     const fsPathSet = new Set(fsPaths);
-    
+
     // 2. Get all images in DB
     const dbImages = getImages() as any[];
     const dbPathMap = new Map<string, string>(); // path -> id
     dbImages.forEach(img => dbPathMap.set(img.file_path, img.id));
-    
+
+    let removed = 0;
     // 3. Identify removed files
     for (const [dbPath, dbId] of dbPathMap) {
         if (!fsPathSet.has(dbPath)) {
-            console.log(`Removing missing file from DB: ${dbPath}`);
+            if (!quiet) console.log(`Removing missing file from DB: ${dbPath}`);
             deleteImage(dbId);
+            removed++;
         }
     }
-    
+
+    let added = 0;
     // 4. Identify added files
     for (const fsPath of fsPaths) {
         if (!dbPathMap.has(fsPath)) {
-            console.log(`Adding new file to DB: ${fsPath}`);
+            if (!quiet) console.log(`Adding new file to DB: ${fsPath}`);
             try {
                 const stats = await fs.stat(fsPath);
                 const metadata = await parseImageFile(fsPath);
-                // Note: ID collision possible if same filename in different folders?
-                // Let's use crypto.randomUUID if available or just timestamp + random
-                // Using basename + timestamp as uniqueId
-                const uniqueId =  path.basename(fsPath) + '_' + stats.mtime.getTime(); 
-                
+                const uniqueId = path.basename(fsPath) + '_' + stats.mtime.getTime();
                 upsertImage(uniqueId, fsPath, stats.mtime.toISOString(), metadata);
+                added++;
             } catch (err) {
                 console.error(`Failed to parse ${fsPath}:`, err);
             }
         }
     }
-    
-    console.log("Sync complete.");
+
+    if (!quiet) console.log("Sync complete.");
+    return { added, removed };
 };
