@@ -284,6 +284,42 @@
 
 ## 前端显示问题
 
+### ❌ 局域网访问时显示不正确
+
+**症状**：在本机用 `http://localhost:3000` 正常，用局域网 IP（如 `http://10.126.126.5:3000`）访问时页面空白、资源加载失败或样式错乱。
+
+**原因**：开发模式下 Vite 的 HMR（热更新）客户端会注入连接地址；从局域网访问时若未指定主机，会连到错误地址导致异常。
+
+**解决方案**：
+
+1. **确认已开启远程访问**
+   - 在 `.env.local` 中设置 `ENABLE_REMOTE_ACCESS=true`
+
+2. **配置 HMR 主机（开发模式必做）**
+   - 在 `.env.local` 中增加本机在局域网中的 IP，例如网段为 `10.126.126.0/24` 时：
+     ```env
+     HMR_HOST=10.126.126.5
+     ```
+   - 将 `10.126.126.5` 替换为你本机的实际 IP
+   - 查看本机 IP：Windows 在 CMD 中运行 `ipconfig`，查看对应网卡的 IPv4 地址
+
+3. **重启开发服务**
+   - 修改 `.env.local` 后需重启 `npm run dev`
+
+4. **生产环境**
+   - 使用 `npm run build` 再 `npm start` 时无 HMR，无需配置 `HMR_HOST`，只需 `ENABLE_REMOTE_ACCESS=true` 即可从局域网正常访问。
+
+5. **样式仍异常：Tailwind 已改为本地构建**
+   - 项目已不再使用 `cdn.tailwindcss.com`，样式由本地 Tailwind 构建，局域网或无法访问外网时也能正常显示。
+   - 若之前出现 `tailwind is not defined` 或 `ERR_CONNECTION_CLOSED`（CDN），更新代码后重启 `npm run dev` 即可。
+
+6. **WebSocket 连接失败（`failed to connect to websocket`）**
+   - 多为本机防火墙拦截入站连接。在运行服务的电脑上：
+   - **Windows**：控制面板 → Windows Defender 防火墙 → 高级设置 → 入站规则 → 新建规则 → 端口 → TCP、3000 → 允许连接；或临时关闭防火墙测试。
+   - 确认 `.env.local` 中 `HMR_HOST` 为本机在局域网中的 IP（如 `10.126.126.4`），且其他设备能 ping 通该 IP。
+
+---
+
 ### ❌ 错误：瀑布流布局混乱
 
 **症状**：图片卡片重叠或间距异常

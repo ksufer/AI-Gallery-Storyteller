@@ -161,6 +161,7 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
 
     // Build list of files to process: compute hash and check sync_records
     const toCopy: { path: string; mtime: Date; size: number; hash: string }[] = [];
+    const seenHashes = new Set<string>();
     let totalSize = 0;
     for (let i = 0; i < scanList.length; i++) {
         const entry = scanList[i];
@@ -176,6 +177,8 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
                     // target missing, re-copy
                 }
             }
+            if (seenHashes.has(hash)) continue; // same content already in this run (e.g. symlinks/duplicates)
+            seenHashes.add(hash);
             toCopy.push({ path: entry.path, mtime: entry.mtime, size: entry.size, hash });
             totalSize += entry.size;
         } catch (e) {
