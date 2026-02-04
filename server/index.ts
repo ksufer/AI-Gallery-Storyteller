@@ -12,6 +12,7 @@ import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.
 import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags, markSyncRecordDeletedByFilePath, createSyncSource, getSyncSources, getSyncSourceById, updateSyncSource, deleteSyncSource, resetDeletedRecordsBySourceId, getActiveSyncTaskBySourceId } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import { validateSourcePath, runSync, scanSourceDirectory, getSyncProgress, setSyncRunState, getSyncRunState } from './syncService.ts';
+import { buildTxt2ImgPayload, generateTxt2Img } from './sdWebuiClient.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -352,6 +353,87 @@ app.delete('/api/images/:id', async (req, res) => {
     } catch (error: any) {
         console.error("Delete API Error:", error);
         res.status(500).json({ success: false, error: error.message || "Failed to delete image" });
+    }
+});
+
+// Make same style (做同款) - call SD WebUI txt2img with image metadata
+app.post('/api/images/:id/make-same-style', async (req, res) => {
+    try {
+        const baseUrl = process.env.SD_WEBUI_URL?.trim();
+        if (!baseUrl) {
+            return res.status(503).json({
+                error: 'SD WebUI 未配置。请在 .env.local 中设置 SD_WEBUI_URL（例如 http://127.0.0.1:7860），并确保 WebUI 已使用 --api 启动。'
+            });
+        }
+
+        const { id } = req.params;
+        const row = getImageById(id) as any;
+        if (!row) {
+            return res.status(404).json({ error: 'Image not found' });
+        }
+
+        let metadata: any;
+        try {
+            metadata = typeof row.meta_json === 'string' ? JSON.parse(row.meta_json) : row.meta_json;
+        } catch {
+            return res.status(400).json({ error: '无效的图片元数据' });
+        }
+        if (metadata?.type !== 'SD WebUI') {
+            return res.status(400).json({ error: '仅支持 SD WebUI 来源的图片' });
+        }
+
+        const payload = buildTxt2ImgPayload(metadata);
+        const apiRes = await generateTxt2Img(baseUrl, payload);
+
+        const b64 = apiRes.images?.[0];
+        if (!b64) {
+            return res.status(502).json({ error: 'SD WebUI 未返回图片' });
+        }
+
+        const buffer = Buffer.from(b64, 'base64');
+        const date = new Date();
+        const dateStr = date.toISOString().split('T')[0];
+        const targetDir = path.join(UPLOADS_DIR, dateStr);
+        try {
+            await fs.access(targetDir);
+        } catch {
+            await fs.mkdir(targetDir, { recursive: true });
+        }
+        const safeName = await getSafeFileName(targetDir, 'same-style.png');
+        const targetPath = path.join(targetDir, safeName);
+        await fs.writeFile(targetPath, buffer);
+
+        // Optionally update seed in metadata from API info
+        try {
+            const info = typeof apiRes.info === 'string' ? JSON.parse(apiRes.info) : apiRes.info;
+            if (info?.seed != null && metadata.sampler) {
+                metadata = { ...metadata, sampler: { ...metadata.sampler, seed: info.seed } };
+            }
+        } catch {
+            // keep metadata as is
+        }
+
+        const dateAdded = date.toISOString();
+        const uniqueId = path.basename(targetPath) + '_' + date.getTime();
+        upsertImage(uniqueId, targetPath, dateAdded, metadata);
+
+        const relativePath = path.relative(UPLOADS_DIR, targetPath);
+        const urlPath = relativePath.split(path.sep).join('/');
+        const galleryImage: GalleryImage = {
+            id: uniqueId,
+            url: `/uploads/${urlPath}`,
+            fileName: path.basename(targetPath),
+            metadata,
+            isFavorite: false,
+            dateAdded,
+            story: undefined
+        };
+
+        res.status(201).json({ success: true, image: galleryImage });
+    } catch (error: any) {
+        console.error('Make same style API Error:', error);
+        const message = error?.message || '做同款失败，请检查 SD WebUI 是否已启动且已开启 --api';
+        res.status(502).json({ error: message });
     }
 });
 
