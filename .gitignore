@@ -30,3 +30,4 @@ uploads/*
 db/*
 
 # Config files (keep examples)
+config/ai-settings.json
