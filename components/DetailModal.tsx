@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { GalleryImage } from '../types';
-import { SparklesIcon, XMarkIcon, HeartIcon, TrashIcon, PlusIcon, PencilIcon, EyeIcon } from './Icons';
+import { SparklesIcon, XMarkIcon, HeartIcon, TrashIcon, PlusIcon, PencilIcon, EyeIcon, ArrowPathIcon } from './Icons';
 
 interface DetailModalProps {
   image: GalleryImage;
@@ -10,6 +10,7 @@ interface DetailModalProps {
   onToggleFavorite: (id: string) => void;
   onDelete?: (id: string) => void;
   onTagsChanged?: () => void;
+  onSameStyleCreated?: (newImage: GalleryImage) => void;
 }
 
 type RightPanelTab = 'story' | 'chat';
@@ -21,9 +22,10 @@ interface ChatMessage {
 
 const MAX_CHAT_HISTORY_DISPLAY = 10;
 
-const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete, onTagsChanged }) => {
+const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory, onToggleFavorite, onDelete, onTagsChanged, onSameStyleCreated }) => {
   const [story, setStory] = useState(image.story || '');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sameStyleLoading, setSameStyleLoading] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [isAddingTag, setIsAddingTag] = useState(false);
@@ -279,6 +281,33 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
     }
   };
 
+  const isSdWebUi = image.metadata?.type === 'SD WebUI';
+
+  const handleMakeSameStyle = async () => {
+    if (!isSdWebUi || sameStyleLoading) return;
+    setSameStyleLoading(true);
+    try {
+      const response = await fetch(`/api/images/${image.id}/make-same-style`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '做同款失败');
+      }
+      if (data.success && data.image) {
+        if (onSameStyleCreated) {
+          onSameStyleCreated(data.image);
+        } else {
+          onClose();
+        }
+      } else {
+        throw new Error('未返回新图片');
+      }
+    } catch (e: any) {
+      alert(e?.message || '做同款失败，请检查 SD WebUI 是否已配置并启动（--api）');
+    } finally {
+      setSameStyleLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 lg:p-8">
       {/* Backdrop */}
@@ -322,6 +351,16 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
           <div className="p-6 pr-14 border-b border-white/5 flex items-center justify-between sticky top-0 bg-[#18181b]/95 backdrop-blur z-10">
             <h3 className="text-lg font-semibold text-white">详情</h3>
             <div className="flex items-center gap-2">
+              {isSdWebUi && (
+                <button
+                  onClick={handleMakeSameStyle}
+                  disabled={sameStyleLoading}
+                  className="p-2 rounded-full border border-white/10 text-gray-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-all disabled:opacity-50"
+                  title="做同款（用相同参数在 SD WebUI 生成新图）"
+                >
+                  <ArrowPathIcon className={`w-5 h-5 ${sameStyleLoading ? 'animate-spin' : ''}`} />
+                </button>
+              )}
               <button 
                 onClick={() => onToggleFavorite(image.id)}
                 className={`p-2 rounded-full border transition-all ${image.isFavorite ? 'bg-red-500/10 border-red-500/50 text-red-500' : 'border-white/10 text-gray-400 hover:text-white'}`}

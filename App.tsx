@@ -669,6 +669,10 @@ function App() {
           onToggleFavorite={handleToggleFavorite}
           onDelete={handleDeleteImage}
           onTagsChanged={handleTagsChanged}
+          onSameStyleCreated={(newImage) => {
+            setImages(prev => [newImage, ...prev]);
+            setSelectedImageId(newImage.id);
+          }}
         />
       )}
 
