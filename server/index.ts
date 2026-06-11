@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import fs from 'fs/promises';
 import http from 'http';
-import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
 import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags, markSyncRecordDeletedByFilePath, createSyncSource, getSyncSources, getSyncSourceById, updateSyncSource, deleteSyncSource, resetDeletedRecordsBySourceId, getActiveSyncTaskBySourceId, cleanupStaleSyncTasks } from './db.ts';
 import { parseImageFile } from './metadata.ts';
@@ -1440,7 +1439,8 @@ const setupServer = async () => {
             res.sendFile(path.join(distPath, 'index.html'));
         });
     } else {
-        // Development: use Vite middleware
+        // Development: use Vite middleware (dynamic import to avoid production dependency)
+        const { createServer: createViteServer } = await import('vite');
         // 局域网访问时需配置 HMR：使 HMR 客户端连接到正确的 host:port，避免显示异常
         const hmrHost = process.env.HMR_HOST; // 例: 10.126.126.5（本机在 10.126.126.0/24 网段的 IP）
         const vite = await createViteServer({
