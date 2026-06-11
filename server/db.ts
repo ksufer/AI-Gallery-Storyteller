@@ -512,3 +512,16 @@ export interface SyncTaskRow {
     started_at: string | null;
     completed_at: string | null;
 }
+
+/** Reset sync task status for stale tasks left running from a previous crash. */
+export const cleanupStaleSyncTasks = () => {
+    const result = db.prepare(`
+        UPDATE sync_tasks SET status = 'failed', completed_at = datetime('now')
+        WHERE status IN ('pending', 'running', 'paused')
+          AND started_at < datetime('now', '-1 hour')
+    `).run();
+    if (result.changes > 0) {
+        console.log(`[Sync Cleanup] Marked ${result.changes} stale sync task(s) as failed from previous run.`);
+    }
+    return result.changes;
+};

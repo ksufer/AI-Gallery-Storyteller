@@ -87,7 +87,7 @@ const moveImage = async (filePath: string, uploadsDir: string, fileName: string)
     }
 };
 
-const isImageFile = (filename: string): boolean => {
+export const isImageFile = (filename: string): boolean => {
     const ext = path.extname(filename).toLowerCase();
     return ['.png', '.jpg', '.jpeg', '.webp'].includes(ext);
 };

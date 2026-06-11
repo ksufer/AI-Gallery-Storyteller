@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import { createServer as createViteServer } from 'vite';
 import { organizeUploads, syncImagesWithDb, getSafeFileName } from './organizer.ts';
-import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags, markSyncRecordDeletedByFilePath, createSyncSource, getSyncSources, getSyncSourceById, updateSyncSource, deleteSyncSource, resetDeletedRecordsBySourceId, getActiveSyncTaskBySourceId } from './db.ts';
+import { getImages, getImagesByTag, getFavoriteImages, getTagsWithCount, upsertImage, updateImageStory, updateImageFavorite, deleteImage, getImageById, addTagToImage, removeTagFromImage, getImageTags, loadBlockedTags, markSyncRecordDeletedByFilePath, createSyncSource, getSyncSources, getSyncSourceById, updateSyncSource, deleteSyncSource, resetDeletedRecordsBySourceId, getActiveSyncTaskBySourceId, cleanupStaleSyncTasks } from './db.ts';
 import { parseImageFile } from './metadata.ts';
 import { validateSourcePath, runSync, scanSourceDirectory, getSyncProgress, setSyncRunState, getSyncRunState } from './syncService.ts';
 import type { GalleryImage, PaginatedResponse } from '../types.ts';
@@ -718,7 +718,15 @@ app.post('/api/sync/start/:id', async (req, res) => {
         if (getActiveSyncTaskBySourceId(id)) {
             return res.status(409).json({ success: false, error: "A sync task is already running for this source" });
         }
-        runSync(id, UPLOADS_DIR).catch((err) => console.error("Sync error:", err));
+        runSync(id, UPLOADS_DIR).catch((err) => {
+            console.error("Sync error:", err);
+            // Ensure SSE clients see the failure by updating progress state
+            const progress = getSyncProgress(id);
+            if (progress) {
+                progress.status = 'failed';
+                progress.logLines.push(`Sync failed: ${err?.message ?? err}`);
+            }
+        });
         res.status(202).json({ success: true, message: "Sync started" });
     } catch (error: any) {
         console.error("Sync start error:", error);
@@ -850,6 +858,10 @@ app.get('/api/sync/events/:id', (req, res) => {
                 clearInterval(interval);
                 res.end();
             }
+        } else {
+            // No sync running — stop polling to avoid wasted CPU
+            clearInterval(interval);
+            res.end();
         }
     }, 1000);
 
@@ -896,6 +908,18 @@ app.put('/api/settings/forbidden-words', async (req, res) => {
         for (const [key, value] of Object.entries(words)) {
             if (typeof key !== 'string' || typeof value !== 'string') {
                 return res.status(400).json({ success: false, error: "All keys and values must be strings" });
+            }
+        }
+
+        // Validate keys are safe regex patterns (escape metacharacters to prevent injection)
+        for (const key of Object.keys(words)) {
+            try {
+                new RegExp(key, 'gi');
+            } catch {
+                return res.status(400).json({
+                    success: false,
+                    error: `Invalid regex pattern in key: "${key}"`
+                });
             }
         }
         
@@ -1291,6 +1315,9 @@ const server = http.createServer(app);
 
 // Trigger organization and sync on startup
 const init = async () => {
+    // Clean up stale sync tasks from previous crash
+    cleanupStaleSyncTasks();
+
     // Ensure uploads root exists
     try {
         await fs.access(UPLOADS_DIR);

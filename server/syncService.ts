@@ -4,23 +4,16 @@ import path from 'path';
 import crypto from 'crypto';
 import {
     getSyncSourceById,
-    getSyncRecordBySourceAndHash,
+    getSyncRecordsBySourceId,
     upsertSyncRecord,
     createSyncTask,
     updateSyncTaskProgress,
     getActiveSyncTaskBySourceId,
     updateSyncSource,
 } from './db.ts';
-import { getSafeFileName } from './organizer.ts';
+import { getSafeFileName, isImageFile } from './organizer.ts';
 import { parseImageFile } from './metadata.ts';
 import { upsertImage } from './db.ts';
-
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
-
-function isImageFile(filename: string): boolean {
-    const ext = path.extname(filename).toLowerCase();
-    return IMAGE_EXTENSIONS.includes(ext);
-}
 
 export interface ScanOptions {
     fromDate?: string; // YYYY-MM-DD
@@ -139,6 +132,26 @@ function yieldLoop(): Promise<void> {
 }
 
 const BATCH_SIZE = 50;
+const COPY_CONCURRENCY = 5;
+
+/** Process items in parallel with a concurrency limit. */
+async function runWithConcurrencyLimit<T>(
+    items: T[],
+    concurrency: number,
+    fn: (item: T) => Promise<void>
+): Promise<void> {
+    let index = 0;
+    const worker = async () => {
+        while (index < items.length) {
+            const i = index++;
+            await fn(items[i]);
+        }
+    };
+    const workers = Array(Math.min(concurrency, items.length))
+        .fill(null)
+        .map(() => worker());
+    await Promise.all(workers);
+}
 
 /**
  * Run sync for a source: scan, filter by sync_records (skip deleted; skip already copied if target exists), copy in batches, upsert images.
@@ -159,6 +172,12 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
     const toDate = source.to_date ?? undefined;
     const scanList = await scanSourceDirectory(sourcePath, { fromDate, toDate });
 
+    // Load all existing sync records for this source into a Map for O(1) lookup (avoid N+1 queries)
+    const recordsByHash = new Map<string, { status: string; target_path: string | null }>();
+    for (const record of getSyncRecordsBySourceId(sourceId)) {
+        recordsByHash.set(record.file_hash, { status: record.status, target_path: record.target_path });
+    }
+
     // Build list of files to process: compute hash and check sync_records
     const toCopy: { path: string; mtime: Date; size: number; hash: string }[] = [];
     const seenHashes = new Set<string>();
@@ -167,7 +186,7 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
         const entry = scanList[i];
         try {
             const hash = await computeFileHash(entry.path);
-            const record = getSyncRecordBySourceAndHash(sourceId, hash);
+            const record = recordsByHash.get(hash);
             if (record?.status === 'deleted') continue;
             if (record?.status === 'copied' && record.target_path) {
                 try {
@@ -203,12 +222,11 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
 
     try {
         for (let i = 0; i < toCopy.length; i += BATCH_SIZE) {
-            const state = runState.get(sourceId);
-            if (state?.cancel) {
+            if (runState.get(sourceId)?.cancel) {
                 appendLog(sourceId, 'Sync cancelled.');
                 break;
             }
-            while (state?.paused && !state?.cancel) {
+            while (runState.get(sourceId)?.paused && !runState.get(sourceId)?.cancel) {
                 setSyncProgress(sourceId, {
                     ...progressState.get(sourceId)!,
                     status: 'paused',
@@ -217,7 +235,9 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
             }
 
             const batch = toCopy.slice(i, i + BATCH_SIZE);
-            for (const item of batch) {
+            let batchProcessed = 0;
+            let batchCopiedSize = 0;
+            await runWithConcurrencyLimit(batch, COPY_CONCURRENCY, async (item) => {
                 try {
                     const dateStr = item.mtime.toISOString().split('T')[0];
                     const targetDir = path.join(uploadsDir, dateStr);
@@ -238,11 +258,11 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
                     });
 
                     const metadata = await parseImageFile(targetPath);
-                    const uniqueId = path.basename(targetPath) + '_' + item.mtime.getTime();
+                    const uniqueId = crypto.randomUUID();
                     upsertImage(uniqueId, targetPath, item.mtime.toISOString(), metadata);
 
-                    copiedSize += item.size;
-                    processedFiles++;
+                    batchCopiedSize += item.size;
+                    batchProcessed++;
                 } catch (err: any) {
                     upsertSyncRecord({
                         sourceId,
@@ -255,7 +275,9 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
                     });
                     appendLog(sourceId, `Failed: ${item.path} - ${err?.message ?? err}`);
                 }
-            }
+            });
+            copiedSize += batchCopiedSize;
+            processedFiles += batchProcessed;
 
             updateSyncTaskProgress(taskId, { processedFiles, copiedSize });
             const prog = progressState.get(sourceId);
@@ -286,5 +308,6 @@ export async function runSync(sourceId: number, uploadsDir: string): Promise<voi
         throw err;
     } finally {
         runState.delete(sourceId);
+        progressState.delete(sourceId);
     }
 }
