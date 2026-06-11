@@ -1,0 +1,17 @@
+node_modules
+dist
+uploads/
+db/
+logs/
+*.log
+.env
+.env.local
+.git
+.gitignore
+.dockerignore
+*.md
+!README.md
+.vscode
+.idea
+.codegraph
+.cursor
