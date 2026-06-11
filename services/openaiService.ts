@@ -6,6 +6,8 @@ import {
   registerOpenAIReinitCallback,
   type OpenAIConfig
 } from './aiConfigService.js';
+import { buildChatSystemInstruction } from './prompts.js';
+import { escapeRegex } from './regexUtils.js';
 
 /**
  * OpenAI 兼容 API Service
@@ -199,7 +201,7 @@ export interface ImageInput {
 const applyForbiddenWordsFilter = (text: string): string => {
   let filtered = text;
   Object.entries(FORBIDDEN_WORDS_MAP).forEach(([forbidden, replacement]) => {
-    const regex = new RegExp(forbidden, 'gi');
+    const regex = new RegExp(escapeRegex(forbidden), 'gi');
     filtered = filtered.replace(regex, replacement);
   });
   return filtered;
@@ -664,16 +666,6 @@ export interface ChatHistoryItem {
   role: 'user' | 'model';
   text: string;
 }
-
-const CHAT_SYSTEM_INSTRUCTION = (story: string | undefined): string => {
-  const storyBlock = story && story.trim()
-    ? `以下是这幅画的背景故事：\n\n${story.trim()}`
-    : '（没有预设故事，请仅根据画面自由发挥，想象你是画中的角色。）';
-  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}
-
-回复时请同时加上动作或场景描述。格式要求：说话内容放在引号中（如「」或""），动作、神态、场景放在小括号（）中。例如：「……你好。」（她微微侧过头，望向窗外的雨。）保持简短、有氛围，一两句话即可，不要脱离角色。`;
-};
-
 /**
  * 以「画中角色」身份与用户多轮对话（OpenAI 兼容 API，需支持视觉的模型）
  * @param image 图片 base64 + mimeType
@@ -705,7 +697,7 @@ export const chatAsCharacter = async (params: {
     throw new Error("当前模型不支持视觉，画中人对话需使用支持视觉的模型（如 gpt-4o）");
   }
 
-  const systemInstruction = CHAT_SYSTEM_INSTRUCTION(story);
+  const systemInstruction = buildChatSystemInstruction(story);
   const openai = getClient();
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> }> = [
@@ -736,13 +728,17 @@ export const chatAsCharacter = async (params: {
   }
 
   try {
-    const response = await openai.chat.completions.create({
+    const isReasoningModel = model.toLowerCase().includes('o1') || model.toLowerCase().includes('o3');
+    const chatParams: any = {
       model,
       messages,
       temperature: 0.7,
       max_tokens: 1024,
-      reasoning_effort: 'low',
-    } as any);
+    };
+    if (isReasoningModel) {
+      chatParams.reasoning_effort = 'low';
+    }
+    const response = await openai.chat.completions.create(chatParams);
 
     const choices = response?.choices;
     const first = Array.isArray(choices) ? choices[0] : undefined;

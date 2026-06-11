@@ -7,6 +7,8 @@ import {
   registerGeminiReinitCallback,
   type GeminiConfig 
 } from './aiConfigService.js';
+import { buildChatSystemInstruction } from './prompts.js';
+import { escapeRegex } from './regexUtils.js';
 
 // 代理相关配置
 let currentProxyUrl: string | undefined = undefined;
@@ -231,7 +233,7 @@ const applyForbiddenWordsFilter = (text: string): string => {
   let filtered = text;
   Object.entries(FORBIDDEN_WORDS_MAP).forEach(([forbidden, replacement]) => {
     // 使用全局替换，不区分大小写
-    const regex = new RegExp(forbidden, 'gi');
+    const regex = new RegExp(escapeRegex(forbidden), 'gi');
     filtered = filtered.replace(regex, replacement);
   });
   return filtered;
@@ -614,17 +616,8 @@ export interface ChatHistoryItem {
   text: string;
 }
 
-const CHAT_SYSTEM_INSTRUCTION = (story: string | undefined): string => {
-  const storyBlock = story && story.trim()
-    ? `以下是这幅画的背景故事：\n\n${story.trim()}`
-    : '（没有预设故事，请仅根据画面自由发挥，想象你是画中的角色。）';
-  return `你是这张画中的角色，用第一人称与用户对话。${storyBlock}
-
-回复时请同时加上动作或场景描述。格式要求：说话内容放在引号中（如「」或""），动作、神态、场景放在小括号（）中。例如：「……你好。」（她微微侧过头，望向窗外的雨。）保持简短、有氛围，一两句话即可，不要脱离角色。`;
-};
-
 /**
- * 以「画中角色」身份与用户多轮对话（无状态：每次请求携带完整 history）
+	 * 以「画中角色」身份与用户多轮对话（无状态：每次请求携带完整 history）
  * @param image 图片 base64 + mimeType
  * @param story 当前图片的故事文案，可为空（仅看图对话）
  * @param userMessage 用户本条消息
@@ -649,7 +642,7 @@ export const chatAsCharacter = async (params: {
     throw new Error("消息内容为空");
   }
 
-  const systemInstruction = CHAT_SYSTEM_INSTRUCTION(story);
+  const systemInstruction = buildChatSystemInstruction(story);
 
   // 多轮 contents：首条 user 带图片；无 history 时合并为单条（图片+用户说），有 history 时追加交替 user/model，最后追加本条 user
   const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }> = [];
@@ -680,20 +673,24 @@ export const chatAsCharacter = async (params: {
 
   try {
     const aiClient = getAiClient();
-    const response = await aiClient.models.generateContent({
-      model,
-      contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        thinkingConfig: { thinkingBudget: 0 },
-        safetySettings: [
+    const isThinkingModel = model.toLowerCase().includes('thinking');
+    const chatConfig: any = {
+      systemInstruction,
+      temperature: 0.7,
+      safetySettings: [
           { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
           { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
           { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
         ] as any[],
-      }
+    };
+    if (isThinkingModel) {
+      chatConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+    const response = await aiClient.models.generateContent({
+      model,
+      contents,
+      config: chatConfig,
     });
 
     if (response.text) {
