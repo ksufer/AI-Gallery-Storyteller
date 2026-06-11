@@ -237,11 +237,12 @@ const DetailModal: React.FC<DetailModalProps> = ({ image, onClose, onUpdateStory
 
     setChatLoading(true);
     const userMsg: ChatMessage = { role: 'user', text };
-    setChatMessages((prev) => [...prev, userMsg]);
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
     setChatInput('');
 
     try {
-      const reply = await sendChatRequest(text, chatMessages);
+      const reply = await sendChatRequest(text, newMessages);
       setChatMessages((prev) => [...prev, { role: 'model', text: reply }]);
     } catch (e: any) {
       console.error(e);
