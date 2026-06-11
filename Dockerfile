@@ -1,5 +1,5 @@
 # ---- Build Stage ----
-FROM node:22-slim AS builder
+FROM node:22 AS builder
 
 WORKDIR /app
 
@@ -10,13 +10,16 @@ COPY . .
 RUN npm run build
 
 # ---- Production Stage ----
-FROM node:22-slim AS runner
+FROM node:22 AS runner
 
 WORKDIR /app
 
-# Install production dependencies only
+# Install production dependencies only (better-sqlite3 needs native build tools)
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
+
+# tsx is a devDependency but needed at runtime to run TypeScript
+RUN npm install -g tsx
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
@@ -37,4 +40,4 @@ ENV ENABLE_REMOTE_ACCESS=true
 
 EXPOSE 3000
 
-CMD ["npx", "tsx", "server/index.ts"]
+CMD ["tsx", "server/index.ts"]
