@@ -60,7 +60,11 @@ const getClient = (): OpenAI => {
 
   // 如果配置发生变化，重新创建客户端
   if (!client || apiKey !== currentApiKey || baseURL !== currentBaseUrl) {
-    const config: any = { apiKey };
+    const config: any = {
+      apiKey,
+      timeout: 600000, // 10分钟超时，本地模型生成较慢
+      maxRetries: 0,
+    };
     
     if (baseURL) {
       config.baseURL = baseURL;
@@ -444,7 +448,7 @@ export const generateStoryFromPrompts = async (
       model,
       messages,
       temperature: 0.8,
-      max_tokens: 500,
+      max_tokens: 4096,
       // OpenRouter 需要的额外参数（其他服务会忽略）
       // @ts-ignore
       transforms: ["middle-out"] // OpenRouter 优化
@@ -497,7 +501,7 @@ export const generateStoryFromPrompts = async (
           model: getModel(),
           messages: fallbackMessages,
           temperature: 0.8,
-          max_tokens: 500,
+          max_tokens: 4096,
           // @ts-ignore
           transforms: ["middle-out"]
         });
@@ -589,7 +593,7 @@ export const generateStoryStream = async function* (
           model,
           messages,
           temperature: 0.8,
-          max_tokens: 500,
+          max_tokens: 4096,
           stream: true,
           transforms: ["middle-out"],
         } as any) as unknown as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
@@ -634,7 +638,7 @@ export const generateStoryStream = async function* (
               model: getModel(),
               messages: fallbackMessages,
               temperature: 0.8,
-              max_tokens: 500,
+              max_tokens: 4096,
               stream: true,
               transforms: ["middle-out"],
             } as any) as unknown as AsyncIterable<OpenAI.Chat.ChatCompletionChunk>;
@@ -729,7 +733,7 @@ export const chatAsCharacter = async (params: {
       model,
       messages,
       temperature: 0.7,
-      max_tokens: 1024,
+      max_tokens: 4096,
     };
     if (isReasoningModel) {
       chatParams.reasoning_effort = 'low';
