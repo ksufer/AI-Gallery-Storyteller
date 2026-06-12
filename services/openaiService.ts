@@ -237,30 +237,26 @@ const filterAgeWords = (text: string): string => {
  */
 const supportsVision = (): boolean => {
   const visionSupport = process.env.OPENAI_VISION_SUPPORT;
-  
+
   // 如果明确设置了支持状态，使用配置值
   if (visionSupport !== undefined && visionSupport !== '') {
     return visionSupport.toLowerCase() === 'true';
   }
-  
-  // 否则根据模型名称自动判断
+
+  // 默认假设支持视觉（对 LM Studio / Ollama 等本地模型更友好）
+  // 只有已知的纯文本模型才返回 false
   const model = getModel().toLowerCase();
-  
-  // 已知支持视觉的模型列表
-  const visionModels = [
-    'gpt-4o',
-    'gpt-4-turbo',
-    'gpt-4-vision',
-    'gpt-5',
-    'claude-3',
-    'gemini',
-    'llava',
-    'qwen-vl',
-    'glm-4v',
-    'cogvlm'
+  const textOnlyModels = [
+    'deepseek-chat',
+    'deepseek-reasoner',
+    'gpt-3.5',
+    'moonshot',
+    'glm-4',
+    'qwen-max',
+    'qwen-plus',
   ];
-  
-  return visionModels.some(visionModel => model.includes(visionModel));
+
+  return !textOnlyModels.some(t => model.includes(t));
 };
 
 /**
